@@ -1,18 +1,13 @@
+import { loadPromptTemplate, renderPrompt } from "../../../lib/prompt-template";
+
 export const runtime = "nodejs";
 
 const OPENROUTER_TEXT_MODEL = process.env.OPENROUTER_TEXT_MODEL || "openai/gpt-4o-mini";
 
-const TONES = {
-  thoughtful:
-    "Вдумчивый, аналитический тон. Пост глубокий, с инсайтами. Подходит для LinkedIn или личного блога.",
-  casual:
-    "Разговорный, живой тон. Как будто пишешь другу. Короткие предложения, эмодзи уместны.",
-  bold:
-    "Дерзкий, провокационный тон. Без воды, прямо в точку. Можно использовать сильные утверждения.",
-  story:
-    "Формат личной истории. Начни с крючка, расскажи ситуацию, дай вывод.",
-  thread:
-    "Формат треда (X/Twitter). Разбей на нумерованные пункты 1/ 2/ 3/ и т.д. Каждый пункт — отдельная мысль.",
+const LENGTH_MAP = {
+  short: "Короткий пост: примерно 2-4 предложения.",
+  medium: "Средний пост: примерно 5-8 предложений.",
+  long: "Длинный пост: примерно 9-14 предложений или структурированный разбор.",
 };
 
 function extractTextContent(content) {
@@ -39,29 +34,38 @@ export async function POST(request) {
   }
 
   try {
-    const { text, tone } = await request.json();
+    const { text, styleInstructions, extraInstructions, length } = await request.json();
     const trimmedText = typeof text === "string" ? text.trim() : "";
+    const trimmedStyle =
+      typeof styleInstructions === "string" ? styleInstructions.trim() : "";
+    const trimmedExtra =
+      typeof extraInstructions === "string" ? extraInstructions.trim() : "";
+    const normalizedLength =
+      typeof length === "string" && length in LENGTH_MAP ? length : "medium";
 
     if (!trimmedText) {
       return Response.json({ error: "Text is required" }, { status: 400 });
     }
+    if (!trimmedStyle) {
+      return Response.json(
+        { error: "Style instructions are required" },
+        { status: 400 },
+      );
+    }
 
-    const prompt = `Ты — эксперт по написанию постов для социальных сетей.
-
-Голосовая заметка (транскрипция):
-"""
-${trimmedText}
-"""
-
-Тон и формат: ${TONES[tone] || TONES.thoughtful}
-
-Задача: напиши готовый пост на основе этой заметки.
-- Сохрани основную мысль автора
-- Не придумывай то, чего нет в тексте
-- Убери слова-паразиты и повторы
-- Пост должен быть готов к публикации
-
-Верни ТОЛЬКО текст поста, без пояснений.`;
+    const template = await loadPromptTemplate("generate-post.md");
+    if (!template) {
+      return Response.json(
+        { error: "Prompt template not found: prompts/generate-post.md" },
+        { status: 500 },
+      );
+    }
+    const prompt = renderPrompt(template, {
+      TEXT: trimmedText,
+      STYLE_INSTRUCTIONS: trimmedStyle,
+      EXTRA_INSTRUCTIONS: trimmedExtra || "Нет дополнительных инструкций.",
+      LENGTH_INSTRUCTION: LENGTH_MAP[normalizedLength],
+    });
 
     const upstream = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
