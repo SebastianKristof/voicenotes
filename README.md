@@ -4,7 +4,8 @@ Next.js App Router app that:
 - records microphone audio or uploads audio/video files,
 - transcribes with OpenRouter (`/api/transcribe`),
 - auto-generates heading + summary after transcription (`/api/summary`),
-- generates social posts with OpenRouter (`/api/generate`) using selected writing style.
+- generates social posts with OpenRouter (`/api/generate`) using selected writing style,
+- stores notes/styles/posts in Supabase MVP Hub.
 
 ## Stack
 
@@ -22,10 +23,13 @@ cp .env.example .env.local
 
 Required variables:
 - `OPENROUTER_API_KEY`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
 Optional variables:
 - `OPENROUTER_TEXT_MODEL` (default: `openai/gpt-4o-mini`)
 - `OPENROUTER_TRANSCRIBE_MODEL` (default: `openai/whisper-large-v3`)
+- `MVP_HUB_APP_SLUG` (default: `voicenotes`)
 
 ## Local development
 
@@ -56,14 +60,28 @@ npm run start
   - `prompts/summary.md`
 - API routes read these files on each request, so prompt edits are picked up without code changes.
 
-## Saving recordings and artifacts
+## Persistence model (Supabase)
 
-Current implementation:
-- last microphone recording can be downloaded from the UI,
-- generated artifacts (transcript, summary, heading, post, length, style metadata) are stored in browser localStorage,
-- artifacts can be exported as JSON.
+Tables (schema `mvp_hub`):
+- `apps`
+- `styles`
+- `notes`
+- `note_posts`
+- legacy `artifacts` (kept for backwards compatibility)
 
-Recommended next step (production):
-- add authenticated server-side persistence (e.g., Postgres + object storage),
-- store audio files in object storage and save metadata rows for transcript/summary/post/style,
-- keep localStorage only as short-term cache.
+Saved per note:
+- dictated/input text
+- heading + summary
+- generated posts (multiple)
+- generation settings (`length`, `extraInstructions`, style snapshot)
+
+Saved globally:
+- style profiles (`name`, `instructions`)
+
+API routes:
+- `GET/POST /api/styles`
+- `DELETE /api/styles/:id`
+- `GET/POST /api/notes`
+- `GET/PATCH /api/notes/:id`
+- `POST /api/notes/:id/posts`
+- `GET /api/notes/:id/similar`

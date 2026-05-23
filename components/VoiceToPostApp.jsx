@@ -9,25 +9,12 @@ const LENGTH_OPTIONS = [
 ];
 
 const INITIAL_TRANSCRIPT_PLACEHOLDER = "текст появится после записи...";
-const STYLE_STORAGE_KEY = "voice_to_post_style_profiles_v1";
-const ARTIFACT_STORAGE_KEY = "voice_to_post_artifacts_v1";
 
 function formatSeconds(seconds) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-function readJsonArray(key) {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function createId() {
+function createTempId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
@@ -57,13 +44,16 @@ export default function VoiceToPostApp() {
 
   const [customStyleName, setCustomStyleName] = useState("");
   const [customStyleInstructions, setCustomStyleInstructions] = useState("");
-  const [styleProfiles, setStyleProfiles] = useState([]);
+  const [styles, setStyles] = useState([]);
   const [selectedStyleId, setSelectedStyleId] = useState("");
 
   const [selectedLength, setSelectedLength] = useState("medium");
   const [extraInstructions, setExtraInstructions] = useState("");
 
-  const [artifacts, setArtifacts] = useState([]);
+  const [notes, setNotes] = useState([]);
+  const [selectedNoteId, setSelectedNoteId] = useState("");
+  const [selectedNote, setSelectedNote] = useState(null);
+  const [similarNotes, setSimilarNotes] = useState([]);
 
   const [lastRecordingUrl, setLastRecordingUrl] = useState("");
   const [lastRecordingName, setLastRecordingName] = useState("");
@@ -89,10 +79,7 @@ export default function VoiceToPostApp() {
     !!currentText && !!customStyleInstructions.trim() && !isGenerating && !isTranscribing;
 
   useEffect(() => {
-    const savedProfiles = readJsonArray(STYLE_STORAGE_KEY);
-    const savedArtifacts = readJsonArray(ARTIFACT_STORAGE_KEY);
-    setStyleProfiles(savedProfiles);
-    setArtifacts(savedArtifacts);
+    void Promise.all([loadStyles(), loadNotes()]);
   }, []);
 
   useEffect(() => {
@@ -112,40 +99,51 @@ export default function VoiceToPostApp() {
     };
   }, []);
 
-  function persistStyleProfiles(next) {
-    setStyleProfiles(next);
-    localStorage.setItem(STYLE_STORAGE_KEY, JSON.stringify(next));
+  async function loadStyles() {
+    const response = await fetch("/api/styles");
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Failed to load styles");
+    setStyles(data.styles || []);
   }
 
-  function persistArtifacts(next) {
-    const trimmed = next.slice(0, 100);
-    setArtifacts(trimmed);
-    localStorage.setItem(ARTIFACT_STORAGE_KEY, JSON.stringify(trimmed));
+  async function loadNotes() {
+    const response = await fetch("/api/notes");
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Failed to load notes");
+    const nextNotes = data.notes || [];
+    setNotes(nextNotes);
+
+    if (!selectedNoteId && nextNotes.length) {
+      await selectNote(nextNotes[0].id);
+    }
   }
 
-  function saveArtifact({ nextTranscript, nextPost, nextHeading, nextSummary }) {
-    if (!nextTranscript && !nextPost && !nextSummary) return;
+  async function selectNote(noteId) {
+    setSelectedNoteId(noteId);
 
-    const selectedProfile = styleProfiles.find((profile) => profile.id === selectedStyleId);
-    const item = {
-      id: createId(),
-      createdAt: new Date().toISOString(),
-      transcript: nextTranscript || "",
-      heading: nextHeading || "",
-      summary: nextSummary || "",
-      post: nextPost || "",
-      length: selectedLength,
-      extraInstructions: extraInstructions.trim(),
-      styleProfileName: selectedProfile?.name || "",
-      styleInstructions: customStyleInstructions.trim(),
-      recordingFileName: lastRecordingName || "",
-    };
+    const noteResponse = await fetch(`/api/notes/${noteId}`);
+    const noteData = await noteResponse.json();
+    if (!noteResponse.ok) throw new Error(noteData.error || "Failed to load note");
 
-    setArtifacts((prev) => {
-      const next = [item, ...prev].slice(0, 100);
-      localStorage.setItem(ARTIFACT_STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
+    const note = noteData.note;
+    setSelectedNote(note);
+    setTranscript(note.dictated_text || "");
+    setManualText(note.input_text || "");
+    setSummaryHeading(note.heading || "");
+    setSummaryText(note.summary || "");
+    setPost(note.posts?.[0]?.post_text || "");
+
+    const similarResponse = await fetch(`/api/notes/${noteId}/similar?limit=5`);
+    const similarData = await similarResponse.json();
+    if (similarResponse.ok) {
+      setSimilarNotes(similarData.similar || []);
+    } else {
+      setSimilarNotes([]);
+    }
+  }
+
+  async function refreshNoteDetails(noteId) {
+    await Promise.all([loadNotes(), selectNote(noteId)]);
   }
 
   function clearTimer() {
@@ -236,7 +234,7 @@ export default function VoiceToPostApp() {
     }
   }
 
-  async function generateSummaryFromTranscript(text) {
+  async function generateSummaryFromText(text) {
     if (!text) return null;
 
     setIsSummarizing(true);
@@ -270,7 +268,37 @@ export default function VoiceToPostApp() {
     }
   }
 
-  async function transcribeFile(file) {
+  async function createNoteInDb({ sourceType, inputText, dictatedText, heading, summary }) {
+    const response = await fetch("/api/notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sourceType,
+        inputText,
+        dictatedText,
+        heading,
+        summary,
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Failed to create note");
+    return data.note;
+  }
+
+  async function updateNoteInDb(noteId, payload) {
+    const response = await fetch(`/api/notes/${noteId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Failed to update note");
+    return data.note;
+  }
+
+  async function transcribeFile(file, sourceType = "upload") {
     setIsTranscribing(true);
     setRecStatus("отправляю в Whisper...");
     try {
@@ -295,15 +323,19 @@ export default function VoiceToPostApp() {
       }
 
       setTranscript(text);
+      setManualText(text);
       setRecStatus("транскрипция готова");
 
-      const analysis = await generateSummaryFromTranscript(text);
-      saveArtifact({
-        nextTranscript: text,
-        nextHeading: analysis?.heading || "",
-        nextSummary: analysis?.summary || "",
-        nextPost: "",
+      const analysis = await generateSummaryFromText(text);
+      const note = await createNoteInDb({
+        sourceType,
+        inputText: text,
+        dictatedText: text,
+        heading: analysis?.heading || "",
+        summary: analysis?.summary || "",
       });
+
+      await refreshNoteDetails(note.id);
     } catch (error) {
       setRecStatus(`ошибка Whisper: ${error.message}`);
     } finally {
@@ -330,7 +362,7 @@ export default function VoiceToPostApp() {
     setLastRecordingUrl(url);
     setLastRecordingName(fileName);
 
-    await transcribeFile(new File([blob], fileName, { type: mime }));
+    await transcribeFile(new File([blob], fileName, { type: mime }), "recording");
   }
 
   function stopRecording() {
@@ -425,13 +457,49 @@ export default function VoiceToPostApp() {
     }
   }
 
+  async function ensureNoteBeforeGeneration() {
+    const baseText = currentText;
+    if (!baseText) throw new Error("Нет текста для генерации");
+
+    if (selectedNoteId) {
+      await updateNoteInDb(selectedNoteId, {
+        inputText: baseText,
+        dictatedText: transcript || null,
+        heading: summaryHeading || null,
+        summary: summaryText || null,
+      });
+      return selectedNoteId;
+    }
+
+    let heading = summaryHeading;
+    let summary = summaryText;
+
+    if (!heading && !summary) {
+      const analysis = await generateSummaryFromText(baseText);
+      heading = analysis?.heading || "";
+      summary = analysis?.summary || "";
+    }
+
+    const created = await createNoteInDb({
+      sourceType: transcript ? "recording" : "manual",
+      inputText: baseText,
+      dictatedText: transcript || null,
+      heading: heading || "",
+      summary: summary || "",
+    });
+
+    return created.id;
+  }
+
   async function handleGenerate() {
-    if (!currentText || isGenerating || !customStyleInstructions.trim()) return;
+    if (!canGenerate) return;
 
     setIsGenerating(true);
     setPost("");
 
     try {
+      const noteId = await ensureNoteBeforeGeneration();
+
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -448,18 +516,36 @@ export default function VoiceToPostApp() {
         throw new Error(data.error || `HTTP ${response.status}`);
       }
 
-      if (!data.post?.trim()) {
+      const nextPost = (data.post || "").trim();
+      if (!nextPost) {
         throw new Error("пустой ответ, попробуй снова");
       }
 
-      const nextPost = data.post.trim();
       setPost(nextPost);
-      saveArtifact({
-        nextTranscript: currentText,
-        nextHeading: summaryHeading,
-        nextSummary: summaryText,
-        nextPost,
+
+      const selectedStyle = styles.find((s) => s.id === selectedStyleId) || null;
+      const saveResponse = await fetch(`/api/notes/${noteId}/posts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          postText: nextPost,
+          length: selectedLength,
+          extraInstructions: extraInstructions.trim() || null,
+          styleId: selectedStyle?.id || null,
+          styleName: selectedStyle?.name || customStyleName || null,
+          styleInstructions: customStyleInstructions.trim(),
+          generationSettings: {
+            length: selectedLength,
+            extraInstructions: extraInstructions.trim() || null,
+          },
+        }),
       });
+      const saveData = await saveResponse.json();
+      if (!saveResponse.ok) {
+        throw new Error(saveData.error || "Не удалось сохранить сгенерированный пост");
+      }
+
+      await refreshNoteDetails(noteId);
     } catch (error) {
       setPost(`ошибка: ${error.message}`);
     } finally {
@@ -485,51 +571,57 @@ export default function VoiceToPostApp() {
     setTimeout(() => setShowToast(false), 2000);
   }
 
-  function handleSaveStyleProfile() {
+  async function handleSaveStyleProfile() {
     const name = customStyleName.trim();
     const instructions = customStyleInstructions.trim();
     if (!name || !instructions) return;
 
-    const next = [
-      { id: createId(), name, instructions },
-      ...styleProfiles.filter((profile) => profile.name.toLowerCase() !== name.toLowerCase()),
-    ];
+    const existing = styles.find((s) => s.id === selectedStyleId);
+    const response = await fetch("/api/styles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: existing?.id || null,
+        name,
+        instructions,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Failed to save style");
 
-    persistStyleProfiles(next);
-    const selected = next.find((profile) => profile.name === name);
-    if (selected) {
-      setSelectedStyleId(selected.id);
-    }
+    await loadStyles();
+    setSelectedStyleId(data.style.id);
   }
 
-  function handleApplyStyleProfile(id) {
+  async function handleApplyStyleProfile(id) {
     setSelectedStyleId(id);
-    const selected = styleProfiles.find((profile) => profile.id === id);
+    const selected = styles.find((profile) => profile.id === id);
     if (!selected) return;
     setCustomStyleName(selected.name);
     setCustomStyleInstructions(selected.instructions);
   }
 
-  function handleDeleteSelectedProfile() {
+  async function handleDeleteSelectedProfile() {
     if (!selectedStyleId) return;
-    const next = styleProfiles.filter((profile) => profile.id !== selectedStyleId);
-    persistStyleProfiles(next);
+    const response = await fetch(`/api/styles/${selectedStyleId}`, { method: "DELETE" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Failed to delete style");
+
     setSelectedStyleId("");
+    setCustomStyleName("");
+    setCustomStyleInstructions("");
+    await loadStyles();
   }
 
-  function exportArtifacts() {
-    if (!artifacts.length) return;
-    const blob = new Blob([JSON.stringify(artifacts, null, 2)], {
-      type: "application/json;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `voice-to-post-artifacts-${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  function startNewNoteDraft() {
+    setSelectedNoteId("");
+    setSelectedNote(null);
+    setSimilarNotes([]);
+    setTranscript("");
+    setManualText("");
+    setSummaryHeading("");
+    setSummaryText("");
+    setPost("");
   }
 
   const levelLabel = Math.round(audioLevel * 100);
@@ -542,6 +634,40 @@ export default function VoiceToPostApp() {
       </header>
 
       <div className="container">
+        <div>
+          <div className="block-label">История заметок</div>
+          <div className="artifact-block">
+            <div className="artifact-actions">
+              <button className="btn btn-primary" type="button" onClick={startNewNoteDraft}>
+                новая заметка
+              </button>
+            </div>
+
+            {notes.length ? (
+              <div className="artifact-list">
+                {notes.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`artifact-item ${selectedNoteId === item.id ? "artifact-item-active" : ""}`}
+                    onClick={() => {
+                      void selectNote(item.id);
+                    }}
+                  >
+                    <div className="artifact-meta">
+                      <span>{new Date(item.created_at).toLocaleString()}</span>
+                    </div>
+                    <div className="artifact-heading">{item.heading || "Без заголовка"}</div>
+                    <div className="artifact-post">{item.summary || "Без саммари"}</div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <span className="placeholder">пока нет заметок</span>
+            )}
+          </div>
+        </div>
+
         <div className="mic-section">
           <div className={`waveform ${isRecording ? "visible recording" : ""}`}>
             <span />
@@ -606,70 +732,78 @@ export default function VoiceToPostApp() {
 
         <div>
           <div className="block-label">или загрузи аудиофайл</div>
-          <UploadBlock onFile={transcribeFile} busy={isTranscribing || isGenerating || isSummarizing} />
+          <UploadBlock onFile={(file) => transcribeFile(file, "upload")} busy={isTranscribing || isGenerating || isSummarizing} />
         </div>
 
         <div>
-          <div className="block-label">Транскрипция</div>
+          <div className="block-label">Транскрипция / текст заметки</div>
           <div className="transcript-block">
-            <div className={`transcript-text ${transcript ? "has-content" : ""}`}>
-              {transcript ? (
-                transcript
-              ) : (
-                <span className="placeholder">{INITIAL_TRANSCRIPT_PLACEHOLDER}</span>
-              )}
-            </div>
-          </div>
-          <div className="controls-inline">
-            <button
-              className="btn"
-              type="button"
-              onClick={() => {
-                setTranscript("");
-                setSummaryHeading("");
-                setSummaryText("");
-              }}
-              disabled={!transcript}
-            >
-              очистить
-            </button>
-            <span style={{ flex: 1 }} />
+            <textarea
+              className="manual-area"
+              placeholder={INITIAL_TRANSCRIPT_PLACEHOLDER}
+              value={manualText}
+              onChange={(event) => setManualText(event.target.value)}
+            />
           </div>
         </div>
 
         <div>
-          <div className="block-label">Заголовок и сводка</div>
+          <div className="block-label">Заголовок и саммари</div>
           <div className="summary-block">
             {isSummarizing ? (
               <div className="summary-loading">
                 <span className="spinner" />
                 <span>генерирую заголовок и сводку...</span>
               </div>
-            ) : summaryHeading || summaryText ? (
+            ) : (
               <>
                 <h3 className="summary-heading">{summaryHeading || "Без заголовка"}</h3>
                 <p className="summary-text">{summaryText || "Сводка отсутствует."}</p>
               </>
-            ) : (
-              <span className="placeholder">после транскрипции здесь появятся заголовок и сводка</span>
             )}
+            <div className="style-controls">
+              <button
+                className="btn"
+                type="button"
+                onClick={() => {
+                  void generateSummaryFromText(currentText);
+                }}
+                disabled={!currentText || isSummarizing}
+              >
+                обновить саммари
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="divider">или введи текст вручную</div>
-
-        <div className="transcript-block">
-          <div className="block-label">Ручной ввод</div>
-          <textarea
-            className="manual-area"
-            placeholder="вставь или напиши свои мысли здесь..."
-            value={manualText}
-            onChange={(event) => setManualText(event.target.value)}
-          />
-        </div>
+        {similarNotes.length ? (
+          <div>
+            <div className="block-label">Связанные заметки (похожесть)</div>
+            <div className="artifact-block">
+              <div className="artifact-list">
+                {similarNotes.map((item) => (
+                  <button
+                    key={item.note_id || createTempId()}
+                    type="button"
+                    className="artifact-item"
+                    onClick={() => {
+                      if (item.note_id) void selectNote(item.note_id);
+                    }}
+                  >
+                    <div className="artifact-meta">
+                      <span>score {(item.similarity_score || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="artifact-heading">{item.heading || "Без заголовка"}</div>
+                    <div className="artifact-post">{item.summary || "Без саммари"}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <div>
-          <div className="block-label">Выбранный стиль</div>
+          <div className="block-label">Стили</div>
           <div className="style-block">
             <textarea
               className="style-area"
@@ -688,7 +822,9 @@ export default function VoiceToPostApp() {
               <button
                 className="btn"
                 type="button"
-                onClick={handleSaveStyleProfile}
+                onClick={() => {
+                  void handleSaveStyleProfile();
+                }}
                 disabled={!customStyleName.trim() || !customStyleInstructions.trim()}
               >
                 сохранить стиль
@@ -699,10 +835,12 @@ export default function VoiceToPostApp() {
               <select
                 className="style-select"
                 value={selectedStyleId}
-                onChange={(event) => handleApplyStyleProfile(event.target.value)}
+                onChange={(event) => {
+                  void handleApplyStyleProfile(event.target.value);
+                }}
               >
                 <option value="">выбери сохраненный стиль</option>
-                {styleProfiles.map((profile) => (
+                {styles.map((profile) => (
                   <option key={profile.id} value={profile.id}>
                     {profile.name}
                   </option>
@@ -711,7 +849,9 @@ export default function VoiceToPostApp() {
               <button
                 className="btn"
                 type="button"
-                onClick={handleDeleteSelectedProfile}
+                onClick={() => {
+                  void handleDeleteSelectedProfile();
+                }}
                 disabled={!selectedStyleId}
               >
                 удалить стиль
@@ -746,7 +886,9 @@ export default function VoiceToPostApp() {
             <button
               className="btn btn-primary"
               type="button"
-              onClick={handleGenerate}
+              onClick={() => {
+                void handleGenerate();
+              }}
               disabled={!canGenerate}
             >
               сгенерировать пост
@@ -755,7 +897,7 @@ export default function VoiceToPostApp() {
         </div>
 
         <div>
-          <div className="block-label">Готовый пост</div>
+          <div className="block-label">Сгенерированный пост</div>
           <div className="post-block">
             <div className="post-output">
               {isGenerating ? (
@@ -777,7 +919,9 @@ export default function VoiceToPostApp() {
             <button
               className="btn btn-primary"
               type="button"
-              onClick={handleCopy}
+              onClick={() => {
+                void handleCopy();
+              }}
               disabled={!post || isGenerating}
             >
               скопировать
@@ -785,50 +929,31 @@ export default function VoiceToPostApp() {
             <button
               className="btn"
               type="button"
-              onClick={handleGenerate}
+              onClick={() => {
+                void handleGenerate();
+              }}
               disabled={!canGenerate}
             >
               перегенерировать
             </button>
           </div>
-        </div>
 
-        <div>
-          <div className="block-label">Артефакты</div>
-          <div className="artifact-block">
-            <div className="artifact-actions">
-              <button className="btn" type="button" onClick={exportArtifacts} disabled={!artifacts.length}>
-                экспорт JSON
-              </button>
-              <button
-                className="btn"
-                type="button"
-                onClick={() => {
-                  persistArtifacts([]);
-                }}
-                disabled={!artifacts.length}
-              >
-                очистить историю
-              </button>
-            </div>
-
-            {artifacts.length ? (
+          {selectedNote?.posts?.length ? (
+            <div className="artifact-block" style={{ marginTop: 12 }}>
+              <div className="block-label">История постов заметки</div>
               <div className="artifact-list">
-                {artifacts.slice(0, 6).map((item) => (
-                  <div className="artifact-item" key={item.id}>
+                {selectedNote.posts.map((item) => (
+                  <div key={item.id} className="artifact-item">
                     <div className="artifact-meta">
-                      <span>{new Date(item.createdAt).toLocaleString()}</span>
-                      <span>{item.length || "medium"}</span>
+                      <span>{new Date(item.created_at).toLocaleString()}</span>
+                      <span>{item.length}</span>
                     </div>
-                    {item.heading ? <div className="artifact-heading">{item.heading}</div> : null}
-                    {item.post ? <div className="artifact-post">{item.post.slice(0, 180)}...</div> : null}
+                    <div className="artifact-post">{item.post_text}</div>
                   </div>
                 ))}
               </div>
-            ) : (
-              <span className="placeholder">история пока пустая</span>
-            )}
-          </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
