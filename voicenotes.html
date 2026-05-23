@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ГОЛОС → ПОСТ</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@300;400;700;900&family=Martian+Mono:wght@300;400&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111;
+    --border: #1e1e1e;
+    --accent: #c8ff00;
+    --accent2: #ff4d00;
+    --text: #f0f0f0;
+    --muted: #555;
+    --radius: 4px;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Martian Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px 80px;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(200,255,0,0.05) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  header {
+    width: 100%;
+    max-width: 680px;
+    margin-bottom: 60px;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+
+  h1 {
+    font-family: 'Unbounded', sans-serif;
+    font-weight: 900;
+    font-size: clamp(1.4rem, 4vw, 2rem);
+    letter-spacing: -0.02em;
+    color: var(--accent);
+    text-transform: uppercase;
+    line-height: 1;
+  }
+
+  .subtitle {
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .container {
+    width: 100%;
+    max-width: 680px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  /* MIC SECTION */
+  .mic-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    padding: 48px 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .mic-section::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 39px,
+      var(--border) 39px,
+      var(--border) 40px
+    );
+    opacity: 0.3;
+    pointer-events: none;
+  }
+
+  .mic-btn {
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    transition: all 0.2s ease;
+    z-index: 1;
+  }
+
+  .mic-btn:hover { background: rgba(200,255,0,0.07); }
+  .mic-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .mic-btn:disabled:hover { background: transparent; }
+
+  .mic-btn.recording {
+    border-color: var(--accent2);
+    animation: pulse-ring 1.2s ease-out infinite;
+  }
+
+  .mic-btn.recording svg { color: var(--accent2); }
+
+  @keyframes pulse-ring {
+    0% { box-shadow: 0 0 0 0 rgba(255,77,0,0.4); }
+    70% { box-shadow: 0 0 0 20px rgba(255,77,0,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,77,0,0); }
+  }
+
+  .mic-btn svg {
+    width: 36px;
+    height: 36px;
+    color: var(--accent);
+    transition: color 0.2s;
+  }
+
+  .rec-status {
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    min-height: 1em;
+    transition: color 0.2s;
+  }
+
+  .rec-status.active { color: var(--accent2); }
+
+  /* WAVEFORM */
+  .waveform {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 32px;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .waveform.visible { opacity: 1; }
+  .waveform span {
+    display: block;
+    width: 3px;
+    background: var(--accent);
+    border-radius: 2px;
+    animation: wave 0.8s ease-in-out infinite alternate;
+    transform-origin: bottom;
+  }
+  .waveform span:nth-child(2) { animation-delay: 0.1s; }
+  .waveform span:nth-child(3) { animation-delay: 0.2s; }
+  .waveform span:nth-child(4) { animation-delay: 0.3s; }
+  .waveform span:nth-child(5) { animation-delay: 0.15s; }
+  .waveform span:nth-child(6) { animation-delay: 0.05s; }
+  .waveform span:nth-child(7) { animation-delay: 0.25s; }
+  .waveform.recording span { background: var(--accent2); }
+  @keyframes wave {
+    from { height: 4px; }
+    to { height: 28px; }
+  }
+
+  /* TRANSCRIPT */
+  .block-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .transcript-block, .post-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 20px;
+    position: relative;
+  }
+
+  .transcript-text {
+    font-size: 0.85rem;
+    line-height: 1.7;
+    color: #999;
+    min-height: 60px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .transcript-text.has-content { color: var(--text); }
+  .transcript-text .placeholder { color: var(--muted); font-style: italic; }
+
+  /* CONTROLS ROW */
+  .controls {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 10px 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+  }
+
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .btn:disabled:hover { border-color: var(--border); color: var(--text); }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+  }
+  .btn-primary:hover { background: #d4ff1a; border-color: #d4ff1a; color: #000; }
+  .btn-primary:disabled:hover { background: var(--accent); border-color: var(--accent); color: #000; }
+
+  /* POST BLOCK */
+  .post-output {
+    font-size: 0.88rem;
+    line-height: 1.75;
+    color: var(--text);
+    min-height: 80px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .post-output .placeholder { color: var(--muted); font-style: italic; font-size: 0.8rem; }
+
+  .post-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  /* TONE SELECTOR */
+  .tone-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+
+  .tone-chip {
+    font-family: 'Martian Mono', monospace;
+    font-size: 0.65rem;
+    padding: 5px 12px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    border-radius: 999px;
+    transition: all 0.15s;
+    letter-spacing: 0.05em;
+  }
+  .tone-chip:hover { border-color: #333; color: #888; }
+  .tone-chip.active { border-color: var(--accent); color: var(--accent); background: rgba(200,255,0,0.07); }
+
+  /* SPINNER */
+  .spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* COPY TOAST */
+  .toast {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--accent);
+    color: #000;
+    font-family: 'Unbounded', sans-serif;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    padding: 10px 24px;
+    opacity: 0;
+    transition: all 0.3s ease;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* DIVIDER */
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--muted);
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* API KEY BLOCK */
+  .apikey-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .apikey-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .apikey-input {
+    flex: 1;
+    min-width: 200px;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    outline: none;
+    font-family: 'Martian Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--text);
+    padding: 4px 0;
+    letter-spacing: 0.05em;
+  }
+  .apikey-input::placeholder { color: var(--muted); }
+  .apikey-input:focus { border-bottom-color: var(--accent); }
+  .apikey-status {
+    font-size: 0.6rem;
+    letter-spacing: 0.1em;
+    padding: 4px 10px;
+    border: 1px solid transparent;
+  }
+  .apikey-status.ok { color: var(--accent); border-color: rgba(200,255,0,0.3); }
+  .apikey-status.missing { color: var(--accent2); border-color: rgba(255,77,0,0.3); }
+  .btn-save {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 7px 14px;
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .btn-save:hover { background: var(--accent); color: #000; }
+
+  /* REC TIMER */
+  .rec-timer {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 1.6rem;
+    font-weight: 300;
+    letter-spacing: 0.05em;
+    color: var(--accent2);
+    display: none;
+    z-index: 1;
+  }
+
+  /* MODEL BADGE */
+  .model-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.55rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 3px 8px;
+    z-index: 1;
+  }
+  .model-badge .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+
+  /* MIC HINT */
+  .mic-hint {
+    font-size: 0.62rem;
+    line-height: 1.5;
+    color: var(--accent2);
+    text-align: center;
+    max-width: 340px;
+    display: none;
+    z-index: 1;
+  }
+  .mic-hint.visible { display: block; }
+
+  /* UPLOAD */
+  .upload-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .upload-name {
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+  }
+  .upload-name.ready { color: var(--accent); }
+
+  /* Manual text area */
+  .manual-area {
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-family: 'Martian Mono', monospace;
+    font-size: 0.85rem;
+    line-height: 1.7;
+    color: var(--text);
+    resize: vertical;
+    min-height: 80px;
+  }
+  .manual-area::placeholder { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Voice → Post</h1>
+  <span class="subtitle">говори — получай пост</span>
+</header>
+
+<div class="container">
+
+  <!-- API KEY -->
+  <div class="apikey-block" id="apikeyBlock">
+    <span class="apikey-label">OpenRouter Key</span>
+    <input class="apikey-input" id="apiKeyInput" type="password" placeholder="sk-or-v1-..." autocomplete="off" spellcheck="false"/>
+    <button class="btn btn-save" id="saveKeyBtn">сохранить</button>
+    <span class="apikey-status missing" id="apiKeyStatus">не задан</span>
+  </div>
+
+  <!-- MIC -->
+  <div class="mic-section">
+    <div class="waveform" id="waveform">
+      <span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span>
+    </div>
+    <div class="rec-timer" id="recTimer">0:00</div>
+    <button class="mic-btn" id="micBtn" disabled title="Нажми и говори">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="2" width="6" height="13" rx="3"/>
+        <path d="M5 10a7 7 0 0 0 14 0"/>
+        <line x1="12" y1="19" x2="12" y2="22"/>
+        <line x1="8" y1="22" x2="16" y2="22"/>
+      </svg>
+    </button>
+    <div class="rec-status" id="recStatus">введи API-ключ чтобы начать</div>
+    <div class="mic-hint" id="micHint"></div>
+    <div class="model-badge"><span class="dot"></span>openai/whisper-large-v3</div>
+  </div>
+
+  <!-- FILE UPLOAD FALLBACK -->
+  <div>
+    <div class="block-label">или загрузи аудиофайл</div>
+    <div class="upload-block" id="uploadBlock">
+      <input type="file" id="audioFileInput" accept="audio/*,video/*" style="display:none"/>
+      <button class="btn" id="uploadBtn" disabled>выбрать файл</button>
+      <span class="upload-name" id="uploadName">mp3, m4a, wav, ogg, webm...</span>
+    </div>
+  </div>
+
+  <!-- TRANSCRIPT -->
+  <div>
+    <div class="block-label">Транскрипция</div>
+    <div class="transcript-block">
+      <div class="transcript-text" id="transcriptText">
+        <span class="placeholder">текст появится после записи...</span>
+      </div>
+    </div>
+    <div style="margin-top:10px; display:flex; gap:8px;">
+      <button class="btn" id="clearTranscript" disabled>очистить</button>
+      <span style="flex:1"></span>
+    </div>
+  </div>
+
+  <div class="divider">или введи текст вручную</div>
+
+  <!-- MANUAL INPUT -->
+  <div class="transcript-block">
+    <div class="block-label">Ручной ввод</div>
+    <textarea class="manual-area" id="manualInput" placeholder="вставь или напиши свои мысли здесь..."></textarea>
+  </div>
+
+  <!-- TONE + GENERATE -->
+  <div>
+    <div class="block-label">Тон поста</div>
+    <div class="tone-row">
+      <button class="tone-chip active" data-tone="thoughtful">вдумчивый</button>
+      <button class="tone-chip" data-tone="casual">разговорный</button>
+      <button class="tone-chip" data-tone="bold">дерзкий</button>
+      <button class="tone-chip" data-tone="story">история</button>
+      <button class="tone-chip" data-tone="thread">тред</button>
+    </div>
+    <button class="btn btn-primary" id="generateBtn" disabled>сгенерировать пост</button>
+  </div>
+
+  <!-- POST OUTPUT -->
+  <div>
+    <div class="block-label">Готовый пост</div>
+    <div class="post-block">
+      <div class="post-output" id="postOutput">
+        <span class="placeholder">пост появится здесь...</span>
+      </div>
+    </div>
+    <div class="post-actions">
+      <button class="btn btn-primary" id="copyBtn" disabled>скопировать</button>
+      <button class="btn" id="regenBtn" disabled>перегенерировать</button>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast">Скопировано!</div>
+
+<script>
+const TONES = {
+  thoughtful:"Вдумчивый, аналитический тон. Пост глубокий, с инсайтами. Подходит для LinkedIn или личного блога.",
+  casual:"Разговорный, живой тон. Как будто пишешь другу. Короткие предложения, эмодзи уместны.",
+  bold:"Дерзкий, провокационный тон. Без воды, прямо в точку. Можно использовать сильные утверждения.",
+  story:"Формат личной истории. Начни с крючка, расскажи ситуацию, дай вывод.",
+  thread:"Формат треда (X/Twitter). Разбей на нумерованные пункты 1/ 2/ 3/ и т.д. Каждый пункт — отдельная мысль.",
+};
+
+let apiKey="", transcript="", selectedTone="thoughtful";
+let isRecording=false, mediaRecorder=null, audioChunks=[];
+let timerInterval=null, recSeconds=0;
+
+const $=id=>document.getElementById(id);
+const micBtn=$("micBtn"), recStatus=$("recStatus"), recTimer=$("recTimer");
+const waveform=$("waveform"), transcriptText=$("transcriptText");
+const clearBtn=$("clearTranscript"), generateBtn=$("generateBtn");
+const manualInput=$("manualInput"), postOutput=$("postOutput");
+const copyBtn=$("copyBtn"), regenBtn=$("regenBtn");
+const apiKeyInput=$("apiKeyInput"), apiKeyStatus=$("apiKeyStatus"), toast=$("toast");
+const saveKeyBtn=$("saveKeyBtn");
+const micHint=$("micHint");
+const uploadBtn=$("uploadBtn"), audioFileInput=$("audioFileInput"), uploadName=$("uploadName");
+
+/* API KEY */
+const saved=sessionStorage.getItem("or_key");
+if(saved){apiKey=saved;apiKeyInput.value=saved;keyReady();}
+
+function trySetKey(){
+  const v=apiKeyInput.value.trim();
+  if(v){apiKey=v;sessionStorage.setItem("or_key",v);keyReady();}
+  else{apiKeyStatus.textContent="не задан";apiKeyStatus.className="apikey-status missing";
+    micBtn.disabled=true;recStatus.textContent="введи API-ключ чтобы начать";}
+}
+
+$("saveKeyBtn").addEventListener("click", trySetKey);
+apiKeyInput.addEventListener("keydown", e=>{ if(e.key==="Enter") trySetKey(); });
+// also fire on paste (after DOM updates) and on change (autofill)
+apiKeyInput.addEventListener("paste", ()=>setTimeout(trySetKey, 50));
+apiKeyInput.addEventListener("change", trySetKey);
+function keyReady(){
+  apiKeyStatus.textContent="задан ✓";apiKeyStatus.className="apikey-status ok";
+  micBtn.disabled=false;recStatus.textContent="нажми чтобы начать запись";
+  uploadBtn.disabled=false;
+}
+
+/* TONE */
+document.querySelectorAll(".tone-chip").forEach(c=>c.addEventListener("click",()=>{
+  document.querySelectorAll(".tone-chip").forEach(x=>x.classList.remove("active"));
+  c.classList.add("active"); selectedTone=c.dataset.tone;
+}));
+
+/* HELPERS */
+const getText=()=>manualInput.value.trim()||transcript.trim();
+const updateGenBtn=()=>{generateBtn.disabled=!getText();};
+manualInput.addEventListener("input",updateGenBtn);
+
+function setTranscript(t){
+  transcript=t;
+  if(t){transcriptText.textContent=t;transcriptText.classList.add("has-content");clearBtn.disabled=false;}
+  else{transcriptText.innerHTML="<span class=\"placeholder\">текст появится после записи...</span>";
+    transcriptText.classList.remove("has-content");clearBtn.disabled=true;}
+  updateGenBtn();
+}
+clearBtn.addEventListener("click",()=>setTranscript(""));
+const fmt=s=>Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
+
+/* RECORDING */
+micBtn.addEventListener("click",async()=>{isRecording?stopRec():await startRec();});
+
+async function startRec(){
+  // Check if we're in a context that can't access mic (e.g. iframe without allow="microphone")
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    micHint.textContent="⚠ getUserMedia недоступен. Открой файл напрямую в браузере (не через iframe). Или используй загрузку аудиофайла ниже.";
+    micHint.classList.add("visible");
+    return;
+  }
+  try{
+    // First check existing permission state if available
+    if(navigator.permissions){
+      const perm=await navigator.permissions.query({name:"microphone"}).catch(()=>null);
+      if(perm && perm.state==="denied"){
+        micHint.textContent="⚠ Доступ к микрофону заблокирован браузером. Разреши доступ в настройках сайта (иконка слева от адресной строки) — или загрузи аудиофайл ниже.";
+        micHint.classList.add("visible");
+        return;
+      }
+    }
+    micHint.classList.remove("visible");
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    const mime=["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus","audio/mp4"]
+      .find(t=>MediaRecorder.isTypeSupported(t))||"";
+    mediaRecorder=new MediaRecorder(stream,mime?{mimeType:mime}:{});
+    audioChunks=[];
+    mediaRecorder.ondataavailable=e=>{if(e.data.size>0)audioChunks.push(e.data);};
+    mediaRecorder.onstop=()=>{stream.getTracks().forEach(t=>t.stop());transcribeAudio();};
+    mediaRecorder.start(250);
+    isRecording=true; recSeconds=0;
+    micBtn.classList.add("recording");
+    recStatus.textContent="запись идёт — нажми ещё раз чтобы остановить";
+    recStatus.classList.add("active");
+    waveform.classList.add("visible","recording");
+    recTimer.style.display="block"; recTimer.textContent="0:00";
+    timerInterval=setInterval(()=>{recSeconds++;recTimer.textContent=fmt(recSeconds);},1000);
+  }catch(e){
+    let msg="ошибка микрофона: "+e.message;
+    if(e.name==="NotAllowedError"||e.name==="PermissionDeniedError"){
+      msg="⚠ Доступ к микрофону отклонён. Разреши доступ в настройках браузера или загрузи аудиофайл ниже.";
+    } else if(e.name==="NotFoundError"){
+      msg="⚠ Микрофон не найден. Подключи микрофон или загрузи аудиофайл ниже.";
+    } else if(e.name==="NotReadableError"){
+      msg="⚠ Микрофон занят другим приложением.";
+    }
+    micHint.textContent=msg;
+    micHint.classList.add("visible");
+    recStatus.textContent="нажми чтобы попробовать снова";
+  }
+}
+
+function stopRec(){
+  if(!mediaRecorder||mediaRecorder.state==="inactive")return;
+  clearInterval(timerInterval);
+  isRecording=false; micBtn.classList.remove("recording");
+  recTimer.style.display="none";
+  recStatus.textContent="⏳ отправляю в Whisper...";
+  recStatus.classList.remove("active");
+  waveform.classList.remove("visible","recording");
+  mediaRecorder.stop();
+}
+
+/* FILE UPLOAD → WHISPER */
+uploadBtn.addEventListener("click",()=>audioFileInput.click());
+audioFileInput.addEventListener("change",async()=>{
+  const file=audioFileInput.files[0];
+  if(!file)return;
+  uploadName.textContent=file.name;
+  uploadName.classList.add("ready");
+  recStatus.textContent="⏳ отправляю файл в Whisper...";
+  await transcribeFile(file);
+  audioFileInput.value="";
+});
+
+async function transcribeFile(file){
+  const fd=new FormData();
+  fd.append("file",file,file.name);
+  fd.append("model","openai/whisper-large-v3");
+  try{
+    const res=await fetch("https://openrouter.ai/api/v1/audio/transcriptions",{
+      method:"POST",
+      headers:{"Authorization":"Bearer "+apiKey,"HTTP-Referer":location.href,"X-Title":"Voice to Post"},
+      body:fd
+    });
+    if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||"HTTP "+res.status);}
+    const data=await res.json();
+    const text=data.text?.trim()||"";
+    if(text){setTranscript(text);recStatus.textContent="транскрипция готова ✓";}
+    else{recStatus.textContent="пустой ответ от Whisper, попробуй снова";}
+  }catch(e){
+    recStatus.textContent="ошибка Whisper: "+e.message;
+    console.error(e);
+  }
+}
+
+/* WHISPER via OpenRouter (from mic recording) */
+async function transcribeAudio(){
+  if(!audioChunks.length)return;
+  const mime=mediaRecorder.mimeType||"audio/webm";
+  const ext=mime.includes("mp4")?"mp4":mime.includes("ogg")?"ogg":"webm";
+  const blob=new Blob(audioChunks,{type:mime});
+  const fd=new FormData();
+  fd.append("file",blob,"rec."+ext);
+  fd.append("model","openai/whisper-large-v3");
+  try{
+    const res=await fetch("https://openrouter.ai/api/v1/audio/transcriptions",{
+      method:"POST",
+      headers:{"Authorization":"Bearer "+apiKey,"HTTP-Referer":location.href,"X-Title":"Voice to Post"},
+      body:fd
+    });
+    if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||"HTTP "+res.status);}
+    const data=await res.json();
+    const text=data.text?.trim()||"";
+    if(text){setTranscript(text);recStatus.textContent="транскрипция готова ✓";}
+    else{recStatus.textContent="пустой ответ от Whisper, попробуй снова";}
+  }catch(e){
+    recStatus.textContent="ошибка Whisper: "+e.message;
+    console.error(e);
+  }
+}
+
+/* GENERATE POST via OpenRouter */
+async function generatePost(){
+  const text=getText(); if(!text)return;
+  generateBtn.disabled=regenBtn.disabled=copyBtn.disabled=true;
+  postOutput.innerHTML="<span class=\"spinner\"></span><span style=\"color:var(--muted);font-size:.8rem\">генерирую пост...</span>";
+  const prompt=`Ты — эксперт по написанию постов для социальных сетей.
+
+Голосовая заметка (транскрипция):
+"""
+${text}
+"""
+
+Тон и формат: ${TONES[selectedTone]}
+
+Задача: напиши готовый пост на основе этой заметки.
+- Сохрани основную мысль автора
+- Не придумывай то, чего нет в тексте
+- Убери слова-паразиты и повторы
+- Пост должен быть готов к публикации
+
+Верни ТОЛЬКО текст поста, без пояснений.`;
+  try{
+    const res=await fetch("https://openrouter.ai/api/v1/chat/completions",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":"Bearer "+apiKey,
+        "HTTP-Referer":location.href,"X-Title":"Voice to Post"},
+      body:JSON.stringify({model:"openai/gpt-4o-mini",max_tokens:1000,
+        messages:[{role:"user",content:prompt}]})
+    });
+    if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||"HTTP "+res.status);}
+    const data=await res.json();
+    const result=data.choices?.[0]?.message?.content?.trim()||"";
+    if(result){postOutput.textContent=result;copyBtn.disabled=regenBtn.disabled=false;}
+    else{postOutput.innerHTML="<span style=\"color:var(--accent2)\">пустой ответ, попробуй снова.</span>";}
+  }catch(e){
+    postOutput.innerHTML="<span style=\"color:var(--accent2)\">ошибка: "+e.message+"</span>";
+  }
+  generateBtn.disabled=!getText();
+}
+generateBtn.addEventListener("click",generatePost);
+regenBtn.addEventListener("click",generatePost);
+
+/* COPY */
+copyBtn.addEventListener("click",async()=>{
+  const t=postOutput.textContent;
+  try{await navigator.clipboard.writeText(t);}
+  catch{const el=document.createElement("textarea");el.value=t;document.body.appendChild(el);
+    el.select();document.execCommand("copy");document.body.removeChild(el);}
+  toast.classList.add("show");setTimeout(()=>toast.classList.remove("show"),2000);
+});
+</script>
+</body>
+</html>
