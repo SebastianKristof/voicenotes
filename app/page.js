@@ -1,5 +1,5 @@
-import VoiceToPostApp from "../components/VoiceToPostApp";
+import HomeScreen from "../components/HomeScreen";
 
 export default function Page() {
-  return <VoiceToPostApp />;
+  return <HomeScreen />;
 }

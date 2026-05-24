@@ -12,6 +12,16 @@
   --muted: #555;
 }
 
+html[data-theme='light'] {
+  --bg: #f6f6f2;
+  --surface: #ffffff;
+  --border: #dcdcd2;
+  --accent: #799c00;
+  --accent2: #d94a1f;
+  --text: #141414;
+  --muted: #666;
+}
+
 body {
   background: var(--bg);
   color: var(--text);
@@ -66,6 +76,36 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 24px;
+}
+
+.app-nav {
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.nav-link {
+  color: var(--muted);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  padding: 8px 14px;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-family: 'Unbounded', sans-serif;
+}
+
+.nav-link:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.nav-link.active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: rgba(200,255,0,0.07);
 }
 
 .mic-section {
@@ -597,6 +637,15 @@ button.artifact-item:hover {
 .recording-download:hover {
   color: #e0ff6b;
   border-bottom-color: #e0ff6b;
+}
+
+.error-box {
+  background: rgba(255, 77, 0, 0.08);
+  border: 1px solid rgba(255, 77, 0, 0.4);
+  color: var(--accent2);
+  padding: 12px 14px;
+  font-size: 0.72rem;
+  line-height: 1.5;
 }
 
 @media (max-width: 640px) {
