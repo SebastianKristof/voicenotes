@@ -499,7 +499,7 @@
     </button>
     <div class="rec-status" id="recStatus">введи API-ключ чтобы начать</div>
     <div class="mic-hint" id="micHint"></div>
-    <div class="model-badge"><span class="dot"></span>openai/whisper-large-v3</div>
+    <div class="model-badge"><span class="dot"></span>openai/whisper-1</div>
   </div>
 
   <!-- FILE UPLOAD FALLBACK -->
@@ -709,7 +709,7 @@ audioFileInput.addEventListener("change",async()=>{
 async function transcribeFile(file){
   const fd=new FormData();
   fd.append("file",file,file.name);
-  fd.append("model","openai/whisper-large-v3");
+  fd.append("model","openai/whisper-1");
   try{
     const res=await fetch("https://openrouter.ai/api/v1/audio/transcriptions",{
       method:"POST",
@@ -735,7 +735,7 @@ async function transcribeAudio(){
   const blob=new Blob(audioChunks,{type:mime});
   const fd=new FormData();
   fd.append("file",blob,"rec."+ext);
-  fd.append("model","openai/whisper-large-v3");
+  fd.append("model","openai/whisper-1");
   try{
     const res=await fetch("https://openrouter.ai/api/v1/audio/transcriptions",{
       method:"POST",

@@ -21,6 +21,24 @@ function createTempId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function isDebugEnabled() {
+  if (typeof window === "undefined") return false;
+  const raw = (new URLSearchParams(window.location.search).get("debug") || "").toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
+function buildTranscribeError(data, status) {
+  const base = data.error || `HTTP ${status}`;
+  if (!isDebugEnabled() || !data.debug) return base;
+  let details = "";
+  try {
+    details = JSON.stringify(data.debug, null, 2);
+  } catch {
+    details = String(data.debug);
+  }
+  return `${base}\n\nDEBUG:\n${details}`;
+}
+
 export default function VoiceToPostApp() {
   const [transcript, setTranscript] = useState("");
   const [manualText, setManualText] = useState("");
@@ -304,16 +322,16 @@ export default function VoiceToPostApp() {
     try {
       const formData = new FormData();
       formData.append("file", file, file.name || "audio.webm");
-      formData.append("model", "openai/whisper-large-v3");
+      const endpoint = isDebugEnabled() ? "/api/transcribe?debug=1" : "/api/transcribe";
 
-      const response = await fetch("/api/transcribe", {
+      const response = await fetch(endpoint, {
         method: "POST",
         body: formData,
       });
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || `HTTP ${response.status}`);
+        throw new Error(buildTranscribeError(data, response.status));
       }
 
       const text = (data.text || "").trim();
@@ -720,7 +738,7 @@ export default function VoiceToPostApp() {
           <div className={`rec-status ${isRecording ? "active" : ""}`}>{recStatus}</div>
           <div className={`mic-hint ${micHint ? "visible" : ""}`}>{micHint}</div>
           <div className="model-badge">
-            <span className="dot" />openai/whisper-large-v3
+            <span className="dot" />openai/whisper-1
           </div>
 
           {lastRecordingUrl ? (

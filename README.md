@@ -28,8 +28,26 @@ Required variables:
 
 Optional variables:
 - `OPENROUTER_TEXT_MODEL` (default: `openai/gpt-4o-mini`)
-- `OPENROUTER_TRANSCRIBE_MODEL` (default: `openai/whisper-large-v3`)
+- `OPENROUTER_API_BASE` (default: `https://openrouter.ai/api/v1`)
+- `OPENROUTER_APP_TITLE` (default: `Voice to Post`)
+- `OPENROUTER_HTTP_REFERER` (optional app URL, for OpenRouter attribution/routing)
+- `OPENROUTER_TRANSCRIBE_MODEL` (single STT model)
+- `OPENROUTER_TRANSCRIBE_MODELS` (comma-separated STT model fallback chain, overrides single model when set)
+- `OPENROUTER_TRANSCRIBE_TRANSPORTS` (comma-separated request formats: `json`, `multipart`; default: `json,multipart`)
+- `OPENROUTER_TRANSCRIBE_RETRY_5XX` (retry count per model for upstream 5xx, default: `1`)
+- `OPENROUTER_TRANSCRIBE_RETRY_DELAY_MS` (base backoff for 5xx retries, default: `300`)
+- `OPENROUTER_TRANSCRIBE_MAX_BYTES` (max input size in bytes, default: `26214400` = 25MB)
 - `MVP_HUB_APP_SLUG` (default: `voicenotes`)
+
+Example:
+- `OPENROUTER_TRANSCRIBE_MODELS=openai/whisper-1,openai/gpt-4o-mini-transcribe`
+- `OPENROUTER_TRANSCRIBE_TRANSPORTS=json,multipart`
+- `OPENROUTER_TRANSCRIBE_RETRY_5XX=1`
+- `OPENROUTER_TRANSCRIBE_RETRY_DELAY_MS=300`
+
+Transcription debug mode:
+- Open app with `?debug=1` (for example `http://localhost:3000/?debug=1`).
+- `/api/transcribe` will return full debug payload (`models`, `attempts`, raw upstream body), and UI will show it in the Whisper error text.
 
 ## Local development
 

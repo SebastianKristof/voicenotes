@@ -279,7 +279,7 @@ export default function TranscribePanel({ onText, disabled }) {
         <div className={`rec-status ${isRecording ? "active" : ""}`}>{recStatus}</div>
         <div className={`mic-hint ${micHint ? "visible" : ""}`}>{micHint}</div>
         <div className="model-badge">
-          <span className="dot" />openai/whisper-large-v3
+          <span className="dot" />openai/whisper-1
         </div>
 
         {lastRecordingUrl ? (
