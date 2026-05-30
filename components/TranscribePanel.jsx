@@ -31,7 +31,8 @@ export default function TranscribePanel({ onText, disabled }) {
   const recordingUrlRef = useRef("");
   const fileInputRef = useRef(null);
 
-  const busy = disabled || isTranscribing;
+  const controlsLocked = disabled || isTranscribing;
+  const uploadLocked = controlsLocked || isRecording;
 
   useEffect(() => {
     return () => {
@@ -243,26 +244,32 @@ export default function TranscribePanel({ onText, disabled }) {
           <span />
         </div>
 
-        <div className="recording-live">
-          <div className={`recording-dot ${isRecording ? "active" : ""}`} />
-          <div className="rec-timer-inline">{formatSeconds(recSeconds)}</div>
-          <div className="recording-level-value">lvl {levelLabel}%</div>
-        </div>
+        {isRecording ? (
+          <>
+            <div className="recording-live">
+              <div className="recording-dot active" />
+              <div className="rec-timer-inline">{formatSeconds(recSeconds)}</div>
+              <div className="recording-level-value">lvl {levelLabel}%</div>
+            </div>
 
-        <div className="level-meter" aria-hidden="true">
-          {levelBars.map((value, index) => (
-            <span
-              key={index}
-              className={isRecording ? "active" : ""}
-              style={{ height: `${10 + value * 48}px` }}
-            />
-          ))}
-        </div>
+            <div className="level-meter" aria-hidden="true">
+              {levelBars.map((value, index) => (
+                <span
+                  key={index}
+                  className="active"
+                  style={{ height: `${10 + value * 48}px` }}
+                />
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="recording-idle-hint">Нажми кнопку и говори. После записи заметка создастся автоматически.</div>
+        )}
 
         <button
           className={`mic-btn ${isRecording ? "recording" : ""}`}
           onClick={() => (isRecording ? stopRecording() : startRecording())}
-          disabled={busy}
+          disabled={controlsLocked}
           title="Нажми и говори"
           type="button"
         >
@@ -281,7 +288,7 @@ export default function TranscribePanel({ onText, disabled }) {
           </svg>
         </button>
 
-        <div className={`rec-status ${isRecording ? "active" : ""}`}>{recStatus}</div>
+        <div className={`rec-status ${isRecording ? "active" : ""}`} aria-live="polite">{recStatus}</div>
         <div className={`mic-hint ${micHint ? "visible" : ""}`}>{micHint}</div>
         <div className="model-badge">
           <span className="dot" />openai/whisper-1
@@ -314,7 +321,7 @@ export default function TranscribePanel({ onText, disabled }) {
             className="btn"
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            disabled={busy}
+            disabled={uploadLocked}
           >
             выбрать файл
           </button>

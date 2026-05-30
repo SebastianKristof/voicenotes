@@ -3,16 +3,17 @@
 import { useEffect, useState } from "react";
 import AppNav from "./AppNav";
 import { listStyles, removeStyle, saveStyle } from "../lib/client-api";
+import { SCREEN_STATUS, useScreenState } from "../lib/use-screen-state";
 
 const THEME_KEY = "voicenotes_theme";
 
 export default function SettingsScreen() {
+  const screen = useScreenState();
   const [styles, setStyles] = useState([]);
   const [selectedStyleId, setSelectedStyleId] = useState("");
   const [name, setName] = useState("");
   const [instructions, setInstructions] = useState("");
   const [theme, setTheme] = useState("dark");
-  const [error, setError] = useState("");
 
   useEffect(() => {
     const savedTheme = localStorage.getItem(THEME_KEY);
@@ -26,16 +27,18 @@ export default function SettingsScreen() {
   }, [theme]);
 
   async function loadStyles() {
-    try {
-      setStyles(await listStyles());
-    } catch (e) {
-      setError(e.message);
-    }
+    await screen.runAction(
+      "load",
+      async () => {
+        setStyles(await listStyles());
+      },
+      { phase: SCREEN_STATUS.LOADING, rethrow: false },
+    );
   }
 
   function pickStyle(id) {
     setSelectedStyleId(id);
-    const style = styles.find((s) => s.id === id);
+    const style = styles.find((item) => item.id === id);
     if (!style) return;
     setName(style.name);
     setInstructions(style.instructions);
@@ -43,33 +46,45 @@ export default function SettingsScreen() {
 
   async function onSave() {
     if (!name.trim() || !instructions.trim()) return;
-    setError("");
-    try {
-      const saved = await saveStyle({
-        id: selectedStyleId || null,
-        name: name.trim(),
-        instructions: instructions.trim(),
-      });
-      await loadStyles();
-      setSelectedStyleId(saved.id);
-    } catch (e) {
-      setError(e.message);
-    }
+
+    await screen.runAction(
+      "save",
+      async () => {
+        const saved = await saveStyle({
+          id: selectedStyleId || null,
+          name: name.trim(),
+          instructions: instructions.trim(),
+        });
+        await loadStyles();
+        setSelectedStyleId(saved.id);
+      },
+      { rethrow: false },
+    );
   }
 
   async function onDelete() {
     if (!selectedStyleId) return;
-    setError("");
-    try {
-      await removeStyle(selectedStyleId);
-      setSelectedStyleId("");
-      setName("");
-      setInstructions("");
-      await loadStyles();
-    } catch (e) {
-      setError(e.message);
-    }
+
+    await screen.runAction(
+      "delete",
+      async () => {
+        await removeStyle(selectedStyleId);
+        setSelectedStyleId("");
+        setName("");
+        setInstructions("");
+        await loadStyles();
+      },
+      { rethrow: false },
+    );
   }
+
+  const statusTextByAction = {
+    load: "загружаю стили...",
+    save: "сохраняю стиль...",
+    delete: "удаляю стиль...",
+  };
+
+  const statusText = screen.isBusy ? (statusTextByAction[screen.activeAction] || "выполняю действие...") : "";
 
   return (
     <>
@@ -80,6 +95,10 @@ export default function SettingsScreen() {
       <AppNav />
 
       <div className="container">
+        <div className="status-strip" aria-live="polite">
+          {statusText || "управление темой и стилями"}
+        </div>
+
         <div>
           <div className="block-label">Тема</div>
           <div className="style-block">
@@ -94,32 +113,50 @@ export default function SettingsScreen() {
           <div className="block-label">Стили</div>
           <div className="style-block">
             <div className="style-controls">
-              <select className="style-select" value={selectedStyleId} onChange={(e) => pickStyle(e.target.value)}>
+              <select className="style-select" value={selectedStyleId} onChange={(event) => pickStyle(event.target.value)}>
                 <option value="">новый стиль</option>
-                {styles.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
+                {styles.map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
                 ))}
               </select>
             </div>
 
             <div className="style-controls">
-              <input className="style-name-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="название стиля" />
+              <input className="style-name-input" value={name} onChange={(event) => setName(event.target.value)} placeholder="название стиля" />
             </div>
 
-            <textarea className="style-area" value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="инструкции стиля" />
+            <textarea className="style-area" value={instructions} onChange={(event) => setInstructions(event.target.value)} placeholder="инструкции стиля" />
 
-            <div className="style-controls">
-              <button className="btn btn-primary" type="button" onClick={onSave} disabled={!name.trim() || !instructions.trim()}>
+            <div className="style-controls desktop-actions">
+              <button className="btn btn-primary" type="button" onClick={onSave} disabled={!name.trim() || !instructions.trim() || screen.isBusy}>
                 сохранить
               </button>
-              <button className="btn" type="button" onClick={onDelete} disabled={!selectedStyleId}>
+              <button className="btn" type="button" onClick={onDelete} disabled={!selectedStyleId || screen.isBusy}>
                 удалить
               </button>
             </div>
           </div>
         </div>
 
-        {error ? <div className="error-box">{error}</div> : null}
+        <div className="mobile-action-bar">
+          <button className="btn btn-primary" type="button" onClick={onSave} disabled={!name.trim() || !instructions.trim() || screen.isBusy}>
+            сохранить
+          </button>
+          <button className="btn" type="button" onClick={onDelete} disabled={!selectedStyleId || screen.isBusy}>
+            удалить
+          </button>
+        </div>
+
+        {screen.error ? (
+          <div className="error-box">
+            {screen.error}
+            <div className="style-controls">
+              <button className="btn" type="button" onClick={screen.clearError}>
+                скрыть
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
     </>
   );

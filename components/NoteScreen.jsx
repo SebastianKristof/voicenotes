@@ -13,6 +13,7 @@ import {
   patchNote,
   summarize,
 } from "../lib/client-api";
+import { SCREEN_STATUS, useScreenState } from "../lib/use-screen-state";
 
 const LENGTH_OPTIONS = [
   { id: "short", label: "короткий" },
@@ -21,6 +22,8 @@ const LENGTH_OPTIONS = [
 ];
 
 export default function NoteScreen({ noteId }) {
+  const screen = useScreenState();
+
   const [note, setNote] = useState(null);
   const [similarNotes, setSimilarNotes] = useState([]);
   const [styles, setStyles] = useState([]);
@@ -33,13 +36,10 @@ export default function NoteScreen({ noteId }) {
   const [length, setLength] = useState("medium");
   const [extraInstructions, setExtraInstructions] = useState("");
   const [generatedPost, setGeneratedPost] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [error, setError] = useState("");
 
   const canGenerate = useMemo(
-    () => !!text.trim() && !!styleInstructions.trim() && !isGenerating,
-    [text, styleInstructions, isGenerating],
+    () => !!text.trim() && !!styleInstructions.trim() && !screen.isBusy,
+    [text, styleInstructions, screen.isBusy],
   );
 
   useEffect(() => {
@@ -47,115 +47,145 @@ export default function NoteScreen({ noteId }) {
   }, [noteId]);
 
   async function loadAll() {
-    try {
-      const [loadedNote, loadedStyles, loadedSimilar] = await Promise.all([
-        getNote(noteId),
-        listStyles(),
-        listSimilar(noteId, 5),
-      ]);
+    await screen.runAction(
+      "load",
+      async () => {
+        const [loadedNote, loadedStyles, loadedSimilar] = await Promise.all([
+          getNote(noteId),
+          listStyles(),
+          listSimilar(noteId, 5),
+        ]);
 
-      setNote(loadedNote);
-      setStyles(loadedStyles);
-      setSimilarNotes(loadedSimilar);
+        setNote(loadedNote);
+        setStyles(loadedStyles);
+        setSimilarNotes(loadedSimilar);
 
-      setText(loadedNote.input_text || "");
-      setHeading(loadedNote.heading || "");
-      setSummaryText(loadedNote.summary || "");
-      setGeneratedPost(loadedNote.posts?.[0]?.post_text || "");
+        setText(loadedNote.input_text || "");
+        setHeading(loadedNote.heading || "");
+        setSummaryText(loadedNote.summary || "");
+        setGeneratedPost(loadedNote.posts?.[0]?.post_text || "");
 
-      const latest = loadedNote.posts?.[0];
-      if (latest) {
-        setLength(latest.length || "medium");
-        setExtraInstructions(latest.extra_instructions || "");
-        setStyleName(latest.style_name || "");
-        setStyleInstructions(latest.style_instructions || "");
+        const latest = loadedNote.posts?.[0];
+        if (latest) {
+          setLength(latest.length || "medium");
+          setExtraInstructions(latest.extra_instructions || "");
+          setStyleName(latest.style_name || "");
+          setStyleInstructions(latest.style_instructions || "");
 
-        const style = loadedStyles.find((s) => s.name === latest.style_name);
-        setSelectedStyleId(style?.id || "");
-      }
-    } catch (e) {
-      setError(e.message);
-    }
+          const style = loadedStyles.find((item) => item.name === latest.style_name);
+          setSelectedStyleId(style?.id || "");
+        }
+      },
+      { phase: SCREEN_STATUS.LOADING, rethrow: false },
+    );
+  }
+
+  async function persistNote() {
+    const updated = await patchNote(noteId, {
+      inputText: text.trim(),
+      dictatedText: text.trim(),
+      heading: heading || null,
+      summary: summaryText || null,
+    });
+
+    setNote((prev) => ({ ...(prev || {}), ...updated }));
   }
 
   async function saveNote() {
-    setIsSaving(true);
-    setError("");
-    try {
-      const updated = await patchNote(noteId, {
-        inputText: text.trim(),
-        dictatedText: text.trim(),
-        heading: heading || null,
-        summary: summaryText || null,
-      });
-      setNote((prev) => ({ ...(prev || {}), ...updated }));
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setIsSaving(false);
-    }
+    await screen.runAction(
+      "save",
+      async () => {
+        await persistNote();
+      },
+      { rethrow: false },
+    );
   }
 
   async function regenerateSummary() {
     if (!text.trim()) return;
-    const s = await summarize(text.trim());
-    setHeading(s.heading);
-    setSummaryText(s.summary);
+
+    await screen.runAction(
+      "summarize",
+      async () => {
+        const nextSummary = await summarize(text.trim());
+        setHeading(nextSummary.heading);
+        setSummaryText(nextSummary.summary);
+      },
+      { rethrow: false },
+    );
   }
 
   async function onTranscribed({ text: nextText }) {
     setText(nextText);
-    const s = await summarize(nextText).catch(() => ({ heading: "", summary: "" }));
-    if (s.heading || s.summary) {
-      setHeading(s.heading);
-      setSummaryText(s.summary);
-    }
-    await patchNote(noteId, {
-      inputText: nextText,
-      dictatedText: nextText,
-      heading: s.heading || heading,
-      summary: s.summary || summaryText,
-    });
-    await loadAll();
+
+    await screen.runAction(
+      "transcribe",
+      async () => {
+        const nextSummary = await summarize(nextText).catch(() => ({ heading: "", summary: "" }));
+        if (nextSummary.heading || nextSummary.summary) {
+          setHeading(nextSummary.heading);
+          setSummaryText(nextSummary.summary);
+        }
+
+        await patchNote(noteId, {
+          inputText: nextText,
+          dictatedText: nextText,
+          heading: nextSummary.heading || heading,
+          summary: nextSummary.summary || summaryText,
+        });
+
+        await loadAll();
+      },
+      { rethrow: false },
+    );
   }
 
   async function runGenerate() {
     if (!canGenerate) return;
-    setIsGenerating(true);
-    setError("");
-    try {
-      await saveNote();
 
-      const postText = await generatePost({
-        text: text.trim(),
-        styleInstructions: styleInstructions.trim(),
-        extraInstructions: extraInstructions.trim(),
-        length,
-      });
+    await screen.runAction(
+      "generate",
+      async () => {
+        await persistNote();
 
-      const selectedStyle = styles.find((s) => s.id === selectedStyleId) || null;
+        const postText = await generatePost({
+          text: text.trim(),
+          styleInstructions: styleInstructions.trim(),
+          extraInstructions: extraInstructions.trim(),
+          length,
+        });
 
-      await createNotePost(noteId, {
-        postText,
-        length,
-        extraInstructions: extraInstructions.trim() || null,
-        styleId: selectedStyle?.id || null,
-        styleName: selectedStyle?.name || styleName || null,
-        styleInstructions: styleInstructions.trim(),
-        generationSettings: {
+        const selectedStyle = styles.find((item) => item.id === selectedStyleId) || null;
+
+        await createNotePost(noteId, {
+          postText,
           length,
           extraInstructions: extraInstructions.trim() || null,
-        },
-      });
+          styleId: selectedStyle?.id || null,
+          styleName: selectedStyle?.name || styleName || null,
+          styleInstructions: styleInstructions.trim(),
+          generationSettings: {
+            length,
+            extraInstructions: extraInstructions.trim() || null,
+          },
+        });
 
-      setGeneratedPost(postText);
-      await loadAll();
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setIsGenerating(false);
-    }
+        setGeneratedPost(postText);
+        await loadAll();
+      },
+      { rethrow: false },
+    );
   }
+
+  const statusTextByAction = {
+    load: "загружаю данные заметки...",
+    transcribe: "обновляю заметку из транскриба...",
+    summarize: "генерирую саммари...",
+    save: "сохраняю заметку...",
+    generate: "генерирую пост...",
+  };
+
+  const statusText = screen.isBusy ? (statusTextByAction[screen.activeAction] || "выполняю действие...") : "";
 
   return (
     <>
@@ -166,72 +196,62 @@ export default function NoteScreen({ noteId }) {
       <AppNav />
 
       <div className="container">
+        <div className="status-strip" aria-live="polite">
+          {statusText || "заметка готова к редактированию"}
+        </div>
+
         <div className="artifact-block">
-          <div className="artifact-meta">
-            <span>ID: {noteId}</span>
+          <div className="artifact-meta wrap-meta">
+            <span className="mono-wrap">ID: {noteId}</span>
             <span>{note?.created_at ? new Date(note.created_at).toLocaleString() : ""}</span>
           </div>
           <div className="style-controls">
             <Link href="/" className="btn">← к истории</Link>
-            <button className="btn" type="button" onClick={saveNote} disabled={isSaving}>
+            <button className="btn" type="button" onClick={saveNote} disabled={screen.isBusy}>
               сохранить заметку
             </button>
           </div>
         </div>
 
-        <TranscribePanel onText={onTranscribed} disabled={isGenerating || isSaving} />
-
-        <div>
-          <div className="block-label">Текст заметки</div>
-          <div className="transcript-block">
-            <textarea className="manual-area" value={text} onChange={(e) => setText(e.target.value)} />
+        <div className="step-block">
+          <div className="step-pill">шаг 1</div>
+          <div className="block-label">Capture / Edit</div>
+          <TranscribePanel onText={onTranscribed} disabled={screen.isBusy} />
+          <div className="transcript-block" style={{ marginTop: 12 }}>
+            <textarea className="manual-area" value={text} onChange={(event) => setText(event.target.value)} />
           </div>
         </div>
 
-        <div>
-          <div className="block-label">Заголовок и саммари</div>
+        <div className="step-block">
+          <div className="step-pill">шаг 2</div>
+          <div className="block-label">Summarize</div>
           <div className="summary-block">
             <input
               className="style-name-input"
               value={heading}
-              onChange={(e) => setHeading(e.target.value)}
+              onChange={(event) => setHeading(event.target.value)}
               placeholder="заголовок"
             />
             <textarea
               className="style-area"
               value={summaryText}
-              onChange={(e) => setSummaryText(e.target.value)}
+              onChange={(event) => setSummaryText(event.target.value)}
               placeholder="саммари"
             />
-            <div className="style-controls">
-              <button className="btn" type="button" onClick={regenerateSummary} disabled={!text.trim()}>
+            <div className="style-controls desktop-actions">
+              <button className="btn" type="button" onClick={regenerateSummary} disabled={!text.trim() || screen.isBusy}>
                 обновить саммари
+              </button>
+              <button className="btn" type="button" onClick={saveNote} disabled={screen.isBusy}>
+                сохранить заметку
               </button>
             </div>
           </div>
         </div>
 
-        {similarNotes.length ? (
-          <div>
-            <div className="block-label">Похожие заметки</div>
-            <div className="artifact-block">
-              <div className="artifact-list">
-                {similarNotes.map((item) => (
-                  <Link key={item.note_id} className="artifact-item" href={`/notes/${item.note_id}`}>
-                    <div className="artifact-meta">
-                      <span>score {(item.similarity_score || 0).toFixed(2)}</span>
-                    </div>
-                    <div className="artifact-heading">{item.heading || "Без заголовка"}</div>
-                    <div className="artifact-post">{item.summary || "Без саммари"}</div>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        <div>
-          <div className="block-label">Параметры генерации</div>
+        <div className="step-block">
+          <div className="step-pill">шаг 3</div>
+          <div className="block-label">Generate</div>
           <div className="style-block">
             <div className="style-controls">
               <select
@@ -240,7 +260,7 @@ export default function NoteScreen({ noteId }) {
                 onChange={(event) => {
                   const id = event.target.value;
                   setSelectedStyleId(id);
-                  const style = styles.find((s) => s.id === id);
+                  const style = styles.find((item) => item.id === id);
                   if (style) {
                     setStyleName(style.name);
                     setStyleInstructions(style.instructions);
@@ -248,8 +268,8 @@ export default function NoteScreen({ noteId }) {
                 }}
               >
                 <option value="">выбери стиль</option>
-                {styles.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
+                {styles.map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
                 ))}
               </select>
               <Link className="btn" href="/settings">управлять стилями</Link>
@@ -258,7 +278,7 @@ export default function NoteScreen({ noteId }) {
             <textarea
               className="style-area"
               value={styleInstructions}
-              onChange={(e) => setStyleInstructions(e.target.value)}
+              onChange={(event) => setStyleInstructions(event.target.value)}
               placeholder="инструкции стиля"
             />
 
@@ -278,29 +298,61 @@ export default function NoteScreen({ noteId }) {
             <textarea
               className="style-area"
               value={extraInstructions}
-              onChange={(e) => setExtraInstructions(e.target.value)}
+              onChange={(event) => setExtraInstructions(event.target.value)}
               placeholder="дополнительные инструкции"
             />
 
-            <button className="btn btn-primary" type="button" onClick={runGenerate} disabled={!canGenerate}>
-              {isGenerating ? "генерирую..." : "сгенерировать пост"}
-            </button>
+            <div className="style-controls desktop-actions">
+              <button className="btn btn-primary" type="button" onClick={runGenerate} disabled={!canGenerate}>
+                {screen.activeAction === "generate" ? "генерирую..." : "сгенерировать пост"}
+              </button>
+            </div>
           </div>
         </div>
 
-        <div>
-          <div className="block-label">Готовый пост</div>
+        <div className="step-block">
+          <div className="step-pill">шаг 4</div>
+          <div className="block-label">Result</div>
           <div className="post-block">
             <div className="post-output">{generatedPost || <span className="placeholder">пост появится здесь...</span>}</div>
           </div>
+        </div>
 
-          {note?.posts?.length ? (
-            <div className="artifact-block" style={{ marginTop: 12 }}>
-              <div className="block-label">История генераций</div>
+        <details className="collapsible-block">
+          <summary className="collapsible-summary">
+            Похожие заметки
+            <span className="count-badge">{similarNotes.length}</span>
+          </summary>
+          <div className="artifact-block">
+            {similarNotes.length ? (
+              <div className="artifact-list">
+                {similarNotes.map((item) => (
+                  <Link key={item.note_id} className="artifact-item" href={`/notes/${item.note_id}`}>
+                    <div className="artifact-meta">
+                      <span>score {(item.similarity_score || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="artifact-heading">{item.heading || "Без заголовка"}</div>
+                    <div className="artifact-post">{item.summary || "Без саммари"}</div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <span className="placeholder">похожие заметки пока не найдены</span>
+            )}
+          </div>
+        </details>
+
+        {note?.posts?.length ? (
+          <details className="collapsible-block" open>
+            <summary className="collapsible-summary">
+              История генераций
+              <span className="count-badge">{note.posts.length}</span>
+            </summary>
+            <div className="artifact-block">
               <div className="artifact-list">
                 {note.posts.map((item) => (
                   <div key={item.id} className="artifact-item">
-                    <div className="artifact-meta">
+                    <div className="artifact-meta wrap-meta">
                       <span>{new Date(item.created_at).toLocaleString()}</span>
                       <span>{item.length}</span>
                     </div>
@@ -309,10 +361,28 @@ export default function NoteScreen({ noteId }) {
                 ))}
               </div>
             </div>
-          ) : null}
+          </details>
+        ) : null}
+
+        <div className="mobile-action-bar">
+          <button className="btn" type="button" onClick={saveNote} disabled={screen.isBusy}>
+            сохранить заметку
+          </button>
+          <button className="btn btn-primary" type="button" onClick={runGenerate} disabled={!canGenerate}>
+            {screen.activeAction === "generate" ? "генерирую..." : "сгенерировать пост"}
+          </button>
         </div>
 
-        {error ? <div className="error-box">{error}</div> : null}
+        {screen.error ? (
+          <div className="error-box">
+            {screen.error}
+            <div className="style-controls">
+              <button className="btn" type="button" onClick={screen.clearError}>
+                скрыть
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
     </>
   );
