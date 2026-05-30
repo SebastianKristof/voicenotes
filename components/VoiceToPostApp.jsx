@@ -9,6 +9,7 @@ const LENGTH_OPTIONS = [
 ];
 
 const INITIAL_TRANSCRIPT_PLACEHOLDER = "текст появится после записи...";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function formatSeconds(seconds) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
@@ -37,6 +38,25 @@ function buildTranscribeError(data, status) {
     details = String(data.debug);
   }
   return `${base}\n\nDEBUG:\n${details}`;
+}
+
+function normalizeNoteId(value) {
+  if (typeof value !== "string") return "";
+  const next = value.trim();
+  if (!next || next === "undefined" || next === "null") return "";
+  return next;
+}
+
+function isUuid(value) {
+  return UUID_RE.test(String(value || ""));
+}
+
+function requireValidNoteId(value, context) {
+  const id = normalizeNoteId(value);
+  if (!id || !isUuid(id)) {
+    throw new Error(`${context}: invalid note id`);
+  }
+  return id;
 }
 
 export default function VoiceToPostApp() {
@@ -124,22 +144,26 @@ export default function VoiceToPostApp() {
     setStyles(data.styles || []);
   }
 
-  async function loadNotes() {
+  async function loadNotes({ autoSelect = true } = {}) {
     const response = await fetch("/api/notes");
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Failed to load notes");
     const nextNotes = data.notes || [];
     setNotes(nextNotes);
 
-    if (!selectedNoteId && nextNotes.length) {
-      await selectNote(nextNotes[0].id);
+    if (autoSelect && !selectedNoteId && nextNotes.length) {
+      const firstValidId = nextNotes.map((item) => normalizeNoteId(item?.id)).find(Boolean);
+      if (firstValidId) {
+        await selectNote(firstValidId);
+      }
     }
   }
 
   async function selectNote(noteId) {
-    setSelectedNoteId(noteId);
+    const safeNoteId = requireValidNoteId(noteId, "Failed to load note");
+    setSelectedNoteId(safeNoteId);
 
-    const noteResponse = await fetch(`/api/notes/${noteId}`);
+    const noteResponse = await fetch(`/api/notes/${safeNoteId}`);
     const noteData = await noteResponse.json();
     if (!noteResponse.ok) throw new Error(noteData.error || "Failed to load note");
 
@@ -151,7 +175,7 @@ export default function VoiceToPostApp() {
     setSummaryText(note.summary || "");
     setPost(note.posts?.[0]?.post_text || "");
 
-    const similarResponse = await fetch(`/api/notes/${noteId}/similar?limit=5`);
+    const similarResponse = await fetch(`/api/notes/${safeNoteId}/similar?limit=5`);
     const similarData = await similarResponse.json();
     if (similarResponse.ok) {
       setSimilarNotes(similarData.similar || []);
@@ -161,7 +185,8 @@ export default function VoiceToPostApp() {
   }
 
   async function refreshNoteDetails(noteId) {
-    await Promise.all([loadNotes(), selectNote(noteId)]);
+    const safeNoteId = requireValidNoteId(noteId, "Failed to refresh note");
+    await Promise.all([loadNotes({ autoSelect: false }), selectNote(safeNoteId)]);
   }
 
   function clearTimer() {
@@ -301,11 +326,17 @@ export default function VoiceToPostApp() {
 
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Failed to create note");
-    return data.note;
+    const note = data.note || null;
+    const noteId = normalizeNoteId(note?.id);
+    if (!note || !noteId || !isUuid(noteId)) {
+      throw new Error("Failed to create note: server returned note without valid id");
+    }
+    return note;
   }
 
   async function updateNoteInDb(noteId, payload) {
-    const response = await fetch(`/api/notes/${noteId}`, {
+    const safeNoteId = requireValidNoteId(noteId, "Failed to update note");
+    const response = await fetch(`/api/notes/${safeNoteId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -480,13 +511,14 @@ export default function VoiceToPostApp() {
     if (!baseText) throw new Error("Нет текста для генерации");
 
     if (selectedNoteId) {
-      await updateNoteInDb(selectedNoteId, {
+      const safeNoteId = requireValidNoteId(selectedNoteId, "Failed to update note");
+      await updateNoteInDb(safeNoteId, {
         inputText: baseText,
         dictatedText: transcript || null,
         heading: summaryHeading || null,
         summary: summaryText || null,
       });
-      return selectedNoteId;
+      return safeNoteId;
     }
 
     let heading = summaryHeading;
@@ -506,7 +538,7 @@ export default function VoiceToPostApp() {
       summary: summary || "",
     });
 
-    return created.id;
+    return requireValidNoteId(created.id, "Failed to create note");
   }
 
   async function handleGenerate() {

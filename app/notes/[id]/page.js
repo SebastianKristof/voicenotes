@@ -1,5 +1,6 @@
 import NoteScreen from "../../../components/NoteScreen";
 
-export default function Page({ params }) {
-  return <NoteScreen noteId={params.id} />;
+export default async function Page({ params }) {
+  const { id } = await params;
+  return <NoteScreen noteId={id} />;
 }

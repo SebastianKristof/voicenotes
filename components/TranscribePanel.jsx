@@ -130,7 +130,12 @@ export default function TranscribePanel({ onText, disabled }) {
         return;
       }
       setRecStatus("транскрипция готова");
-      await onText({ text, sourceType });
+      try {
+        await onText({ text, sourceType });
+      } catch (error) {
+        setRecStatus(`ошибка сохранения заметки: ${error.message}`);
+        return;
+      }
     } catch (error) {
       setRecStatus(`ошибка Whisper: ${error.message}`);
     } finally {

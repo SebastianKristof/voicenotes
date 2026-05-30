@@ -7,6 +7,14 @@ import AppNav from "./AppNav";
 import TranscribePanel from "./TranscribePanel";
 import { createNote, listNotes, summarize } from "../lib/client-api";
 
+function ensureNoteId(note, context) {
+  const id = typeof note?.id === "string" ? note.id.trim() : "";
+  if (!id) {
+    throw new Error(`${context}: note id is empty`);
+  }
+  return id;
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const [notes, setNotes] = useState([]);
@@ -43,9 +51,10 @@ export default function HomeScreen() {
       heading: nextSummary.heading,
       summary: nextSummary.summary,
     });
+    const noteId = ensureNoteId(note, "Failed to open note after transcription");
 
     await load();
-    router.push(`/notes/${note.id}`);
+    router.push(`/notes/${noteId}`);
   }
 
   async function saveManualNote() {
@@ -66,9 +75,10 @@ export default function HomeScreen() {
         heading: nextSummary.heading,
         summary: nextSummary.summary,
       });
+      const noteId = ensureNoteId(note, "Failed to open note after save");
 
       await load();
-      router.push(`/notes/${note.id}`);
+      router.push(`/notes/${noteId}`);
     } catch (e) {
       setError(e.message);
     } finally {
