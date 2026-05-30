@@ -1,4 +1,4 @@
-import { getNote, updateNote } from "../../../../lib/mvp-hub-repo";
+import { deleteNote, getNote, updateNote } from "../../../../lib/mvp-hub-repo";
 
 export const runtime = "nodejs";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -38,6 +38,21 @@ export async function PATCH(request, { params }) {
     return Response.json(
       { error: message },
       { status: 400 },
+    );
+  }
+}
+
+export async function DELETE(_request, { params }) {
+  try {
+    const resolvedParams = await params;
+    const noteId = getValidId(resolvedParams);
+    await deleteNote(noteId);
+    return Response.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to delete note";
+    return Response.json(
+      { error: message },
+      { status: message.includes("invalid note id") ? 400 : 500 },
     );
   }
 }

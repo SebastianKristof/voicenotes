@@ -7,7 +7,7 @@ function formatSeconds(seconds) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-export default function TranscribePanel({ onText, disabled }) {
+export default function TranscribePanel({ onText, disabled, compact = false }) {
   const [isRecording, setIsRecording] = useState(false);
   const [recSeconds, setRecSeconds] = useState(0);
   const [recStatus, setRecStatus] = useState("нажми чтобы начать запись");
@@ -31,7 +31,8 @@ export default function TranscribePanel({ onText, disabled }) {
   const recordingUrlRef = useRef("");
   const fileInputRef = useRef(null);
 
-  const busy = disabled || isTranscribing;
+  const controlsLocked = disabled || isTranscribing;
+  const uploadLocked = controlsLocked || isRecording;
 
   useEffect(() => {
     return () => {
@@ -230,39 +231,51 @@ export default function TranscribePanel({ onText, disabled }) {
 
   const levelLabel = useMemo(() => Math.round(audioLevel * 100), [audioLevel]);
 
+  const showUploadName = !compact || uploadName.includes(".");
+
   return (
-    <>
+    <div className={`transcribe-panel ${compact ? "transcribe-panel-compact" : ""}`}>
       <div className="mic-section">
-        <div className={`waveform ${isRecording ? "visible recording" : ""}`}>
-          <span />
-          <span />
-          <span />
-          <span />
-          <span />
-          <span />
-          <span />
-        </div>
+        {!compact ? (
+          <div className={`waveform ${isRecording ? "visible recording" : ""}`}>
+            <span />
+            <span />
+            <span />
+            <span />
+            <span />
+            <span />
+            <span />
+          </div>
+        ) : null}
 
-        <div className="recording-live">
-          <div className={`recording-dot ${isRecording ? "active" : ""}`} />
-          <div className="rec-timer-inline">{formatSeconds(recSeconds)}</div>
-          <div className="recording-level-value">lvl {levelLabel}%</div>
-        </div>
+        {isRecording ? (
+          <>
+            <div className="recording-live">
+              <div className="recording-dot active" />
+              <div className="rec-timer-inline">{formatSeconds(recSeconds)}</div>
+              {!compact ? <div className="recording-level-value">lvl {levelLabel}%</div> : null}
+            </div>
 
-        <div className="level-meter" aria-hidden="true">
-          {levelBars.map((value, index) => (
-            <span
-              key={index}
-              className={isRecording ? "active" : ""}
-              style={{ height: `${10 + value * 48}px` }}
-            />
-          ))}
-        </div>
+            {!compact ? (
+              <div className="level-meter" aria-hidden="true">
+                {levelBars.map((value, index) => (
+                  <span
+                    key={index}
+                    className="active"
+                    style={{ height: `${10 + value * 48}px` }}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </>
+        ) : (
+          !compact ? <div className="recording-idle-hint">Нажми кнопку и говори. После записи заметка создастся автоматически.</div> : null
+        )}
 
         <button
           className={`mic-btn ${isRecording ? "recording" : ""}`}
           onClick={() => (isRecording ? stopRecording() : startRecording())}
-          disabled={busy}
+          disabled={controlsLocked}
           title="Нажми и говори"
           type="button"
         >
@@ -281,21 +294,23 @@ export default function TranscribePanel({ onText, disabled }) {
           </svg>
         </button>
 
-        <div className={`rec-status ${isRecording ? "active" : ""}`}>{recStatus}</div>
+        <div className={`rec-status ${isRecording ? "active" : ""}`} aria-live="polite">{recStatus}</div>
         <div className={`mic-hint ${micHint ? "visible" : ""}`}>{micHint}</div>
-        <div className="model-badge">
-          <span className="dot" />openai/whisper-1
-        </div>
+        {!compact ? (
+          <div className="model-badge">
+            <span className="dot" />openai/whisper-1
+          </div>
+        ) : null}
 
-        {lastRecordingUrl ? (
+        {!compact && lastRecordingUrl ? (
           <a className="recording-download" href={lastRecordingUrl} download={lastRecordingName}>
             скачать запись ({lastRecordingName})
           </a>
         ) : null}
       </div>
 
-      <div>
-        <div className="block-label">или загрузи аудиофайл</div>
+      <div className="transcribe-upload">
+        {!compact ? <div className="block-label">или загрузи аудиофайл</div> : null}
         <div className="upload-block">
           <input
             ref={fileInputRef}
@@ -314,13 +329,13 @@ export default function TranscribePanel({ onText, disabled }) {
             className="btn"
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            disabled={busy}
+            disabled={uploadLocked}
           >
             выбрать файл
           </button>
-          <span className={`upload-name ${uploadName.includes(".") ? "ready" : ""}`}>{uploadName}</span>
+          {showUploadName ? <span className={`upload-name ${uploadName.includes(".") ? "ready" : ""}`}>{uploadName}</span> : null}
         </div>
       </div>
-    </>
+    </div>
   );
 }

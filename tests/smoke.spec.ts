@@ -35,6 +35,21 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function noteUuid(seq: number) {
+  return `00000000-0000-4000-8000-${String(seq).padStart(12, '0')}`;
+}
+
+async function expectNoHorizontalOverflow(page: import('@playwright/test').Page, label: string) {
+  const metrics = await page.evaluate(() => ({
+    innerWidth: window.innerWidth,
+    docWidth: document.documentElement.scrollWidth,
+    bodyWidth: document.body ? document.body.scrollWidth : 0,
+  }));
+
+  const maxWidth = Math.max(metrics.docWidth, metrics.bodyWidth);
+  expect(maxWidth, `${label} has horizontal overflow`).toBeLessThanOrEqual(metrics.innerWidth + 1);
+}
+
 async function installApiMocks(page: import('@playwright/test').Page) {
   const styles: Style[] = [];
   const notes: Note[] = [];
@@ -121,7 +136,7 @@ async function installApiMocks(page: import('@playwright/test').Page) {
     if (path === '/api/notes' && method === 'POST') {
       const payload = request.postDataJSON() as Record<string, unknown>;
       const note: Note = {
-        id: `note-${noteSeq++}`,
+        id: noteUuid(noteSeq++),
         heading: String(payload.heading || ''),
         summary: String(payload.summary || ''),
         input_text: String(payload.inputText || ''),
@@ -195,6 +210,17 @@ async function installApiMocks(page: import('@playwright/test').Page) {
       return;
     }
 
+    if (noteIdMatch && method === 'DELETE') {
+      const index = notes.findIndex((n) => n.id === noteIdMatch[1]);
+      if (index === -1) {
+        await json(404, { error: 'Not found' });
+        return;
+      }
+      notes.splice(index, 1);
+      await json(200, { ok: true });
+      return;
+    }
+
     const similarMatch = path.match(/^\/api\/notes\/([^/]+)\/similar$/);
     if (similarMatch && method === 'GET') {
       await json(200, { similar: [] });
@@ -253,27 +279,67 @@ async function installApiMocks(page: import('@playwright/test').Page) {
   });
 }
 
-test('smoke: settings -> style save, home -> create note, note -> generate post', async ({ page }) => {
+test('smoke: settings -> style save, home -> create note, note -> append transcribe, generate, delete', async ({ page }) => {
   await installApiMocks(page);
 
   await page.goto('/settings');
   await page.getByPlaceholder('название стиля').fill('Founder voice');
   await page.getByPlaceholder('инструкции стиля').fill('Пиши кратко, конкретно, с тезисами.');
   await page.getByRole('button', { name: 'сохранить' }).click();
-  await expect(page.getByRole('option', { name: 'Founder voice' })).toBeVisible();
+  await expect(page.locator('select option', { hasText: 'Founder voice' })).toHaveCount(1);
 
   await page.goto('/');
+  await page.getByRole('button', { name: 'больше опций' }).click();
   await page.getByPlaceholder('вставь или напиши заметку здесь...').fill('Мы протестировали новый формат запуска фич.');
   await page.getByRole('button', { name: 'сохранить и открыть' }).click();
-  await page.waitForURL(/\/notes\/note-\d+/);
+  await page.waitForURL(/\/notes\/[0-9a-f-]{36}$/);
 
-  await page.getByRole('combobox').selectOption({ label: 'Founder voice' });
-  await page.getByRole('button', { name: 'сгенерировать пост' }).click();
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'clip.webm',
+    mimeType: 'audio/webm',
+    buffer: Buffer.from('fake-audio'),
+  });
+  await page.getByRole('button', { name: 'больше опций' }).click();
+  await expect(page.locator('textarea.manual-area')).toHaveValue(
+    'Мы протестировали новый формат запуска фич.\n\nТекст из транскриба (мок).',
+  );
 
-  await expect(page.getByText('Смок-пост: это проверка генерации и сохранения.')).toBeVisible();
+  await page.locator('select.style-select').selectOption({ label: 'Founder voice' });
+  await page.getByPlaceholder('инструкции стиля').fill('Пиши кратко, конкретно, с тезисами.');
+  await page
+    .getByLabel('Панель дополнения заметки')
+    .getByRole('button', { name: 'сгенерировать пост' })
+    .click();
+
+  await expect(page.locator('.post-output')).toContainText('Смок-пост: это проверка генерации и сохранения.');
   await expect(page.getByText('История генераций')).toBeVisible();
-  await expect(page.getByText('Founder voice')).toBeVisible();
+
+  page.once('dialog', async (dialog) => {
+    await dialog.accept();
+  });
+  await page
+    .getByLabel('Панель дополнения заметки')
+    .getByRole('button', { name: 'удалить заметку' })
+    .click();
+  await page.waitForURL('/');
 
   await page.goto('/');
-  await expect(page.getByText('Смок заголовок')).toBeVisible();
+  await expect(page.getByText('Смок заголовок')).toHaveCount(0);
+});
+
+test('mobile: no horizontal overflow on key screens', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installApiMocks(page);
+
+  await page.goto('/');
+  await expectNoHorizontalOverflow(page, 'home screen');
+
+  await page.getByRole('button', { name: 'больше опций' }).click();
+  await page.getByPlaceholder('вставь или напиши заметку здесь...').fill('Тест мобильной ширины экрана.');
+  await page.getByRole('button', { name: 'сохранить и открыть' }).click();
+  await page.waitForURL(/\/notes\/[0-9a-f-]{36}$/);
+  await expectNoHorizontalOverflow(page, 'note screen');
+
+  await page.goto('/settings');
+  await expectNoHorizontalOverflow(page, 'settings screen');
 });
