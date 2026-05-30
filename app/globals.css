@@ -49,6 +49,11 @@ body {
   overflow-x: hidden;
 }
 
+html,
+body {
+  max-width: 100%;
+}
+
 body::before {
   content: '';
   position: fixed;
@@ -93,6 +98,10 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.container > * {
+  min-width: 0;
 }
 
 .app-nav {
@@ -521,6 +530,7 @@ h1 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  max-width: 100%;
 }
 
 .btn:hover {
@@ -543,6 +553,17 @@ h1 {
   color: #000;
   background: color-mix(in srgb, var(--accent) 88%, #fff);
   border-color: color-mix(in srgb, var(--accent) 88%, #fff);
+}
+
+.btn-danger {
+  border-color: color-mix(in srgb, var(--accent2) 60%, var(--border));
+  color: var(--accent2);
+}
+
+.btn-danger:hover {
+  border-color: var(--accent2);
+  color: var(--accent2);
+  background: color-mix(in srgb, var(--accent2) 12%, transparent);
 }
 
 .tone-chip {
@@ -578,6 +599,11 @@ h1 {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.style-controls > *,
+.length-row > * {
+  min-width: 0;
 }
 
 .artifact-list {
@@ -653,6 +679,7 @@ a.artifact-item:hover {
   letter-spacing: 0.07em;
   color: var(--text);
   font-family: 'Unbounded', sans-serif;
+  flex-wrap: wrap;
 }
 
 .collapsible-summary::-webkit-details-marker {
@@ -730,7 +757,7 @@ summary:focus-visible {
     bottom: 0;
     z-index: 30;
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
     gap: 8px;
     padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
     background: color-mix(in srgb, var(--bg) 88%, transparent);
@@ -740,6 +767,9 @@ summary:focus-visible {
 
   .mobile-action-bar .btn {
     width: 100%;
+    min-width: 0;
+    white-space: normal;
+    text-align: center;
   }
 
   .mic-section {

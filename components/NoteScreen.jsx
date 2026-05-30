@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import AppNav from "./AppNav";
 import TranscribePanel from "./TranscribePanel";
 import {
@@ -11,6 +12,7 @@ import {
   listSimilar,
   listStyles,
   patchNote,
+  removeNote,
   summarize,
 } from "../lib/client-api";
 import { SCREEN_STATUS, useScreenState } from "../lib/use-screen-state";
@@ -21,7 +23,15 @@ const LENGTH_OPTIONS = [
   { id: "long", label: "длинный" },
 ];
 
+function appendTranscribedText(baseText, incomingText) {
+  const incoming = String(incomingText || "").trim();
+  if (!incoming) return String(baseText || "").trim();
+  const base = String(baseText || "").trim();
+  return base ? `${base}\n\n${incoming}` : incoming;
+}
+
 export default function NoteScreen({ noteId }) {
+  const router = useRouter();
   const screen = useScreenState();
 
   const [note, setNote] = useState(null);
@@ -116,25 +126,43 @@ export default function NoteScreen({ noteId }) {
   }
 
   async function onTranscribed({ text: nextText }) {
-    setText(nextText);
+    const mergedInputText = appendTranscribedText(text, nextText);
+    const mergedDictatedText = appendTranscribedText(note?.dictated_text || "", nextText);
+    setText(mergedInputText);
 
     await screen.runAction(
       "transcribe",
       async () => {
-        const nextSummary = await summarize(nextText).catch(() => ({ heading: "", summary: "" }));
+        const nextSummary = await summarize(mergedInputText).catch(() => ({ heading: "", summary: "" }));
         if (nextSummary.heading || nextSummary.summary) {
           setHeading(nextSummary.heading);
           setSummaryText(nextSummary.summary);
         }
 
         await patchNote(noteId, {
-          inputText: nextText,
-          dictatedText: nextText,
+          inputText: mergedInputText,
+          dictatedText: mergedDictatedText,
           heading: nextSummary.heading || heading,
           summary: nextSummary.summary || summaryText,
         });
 
         await loadAll();
+      },
+      { rethrow: false },
+    );
+  }
+
+  async function deleteCurrentNote() {
+    if (typeof window !== "undefined") {
+      const accepted = window.confirm("Удалить заметку без возможности восстановления?");
+      if (!accepted) return;
+    }
+
+    await screen.runAction(
+      "delete",
+      async () => {
+        await removeNote(noteId);
+        router.push("/");
       },
       { rethrow: false },
     );
@@ -183,6 +211,7 @@ export default function NoteScreen({ noteId }) {
     summarize: "генерирую саммари...",
     save: "сохраняю заметку...",
     generate: "генерирую пост...",
+    delete: "удаляю заметку...",
   };
 
   const statusText = screen.isBusy ? (statusTextByAction[screen.activeAction] || "выполняю действие...") : "";
@@ -209,6 +238,9 @@ export default function NoteScreen({ noteId }) {
             <Link href="/" className="btn">← к истории</Link>
             <button className="btn" type="button" onClick={saveNote} disabled={screen.isBusy}>
               сохранить заметку
+            </button>
+            <button className="btn btn-danger" type="button" onClick={deleteCurrentNote} disabled={screen.isBusy}>
+              удалить заметку
             </button>
           </div>
         </div>
@@ -366,10 +398,13 @@ export default function NoteScreen({ noteId }) {
 
         <div className="mobile-action-bar">
           <button className="btn" type="button" onClick={saveNote} disabled={screen.isBusy}>
-            сохранить заметку
+            сохранить
           </button>
           <button className="btn btn-primary" type="button" onClick={runGenerate} disabled={!canGenerate}>
-            {screen.activeAction === "generate" ? "генерирую..." : "сгенерировать пост"}
+            {screen.activeAction === "generate" ? "генерирую..." : "генерировать"}
+          </button>
+          <button className="btn btn-danger" type="button" onClick={deleteCurrentNote} disabled={screen.isBusy}>
+            удалить
           </button>
         </div>
 
