@@ -170,7 +170,10 @@ export default function HomeScreen() {
           </div>
         </details>
 
-        <section className="floating-compose-panel home-floating-panel" aria-label="Панель новой заметки">
+        <section
+          className={`floating-compose-panel home-floating-panel ${showMoreOptions ? "expanded" : "collapsed"}`}
+          aria-label="Панель новой заметки"
+        >
           <div className="floating-compose-header">
             <div>
               <div className="step-pill">новая заметка</div>
@@ -186,7 +189,7 @@ export default function HomeScreen() {
             </button>
           </div>
 
-          <TranscribePanel onText={handleTranscribed} disabled={screen.isBusy} />
+          <TranscribePanel onText={handleTranscribed} disabled={screen.isBusy} compact={!showMoreOptions} />
 
           {showMoreOptions ? (
             <div className="floating-compose-extra">

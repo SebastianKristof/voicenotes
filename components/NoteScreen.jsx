@@ -388,7 +388,10 @@ export default function NoteScreen({ noteId }) {
           </details>
         ) : null}
 
-        <section className="floating-compose-panel note-floating-panel" aria-label="Панель дополнения заметки">
+        <section
+          className={`floating-compose-panel note-floating-panel ${showMoreOptions ? "expanded" : "collapsed"}`}
+          aria-label="Панель дополнения заметки"
+        >
           <div className="floating-compose-header">
             <div>
               <div className="step-pill">дополнить заметку</div>
@@ -404,7 +407,7 @@ export default function NoteScreen({ noteId }) {
             </button>
           </div>
 
-          <TranscribePanel onText={onTranscribed} disabled={screen.isBusy} />
+          <TranscribePanel onText={onTranscribed} disabled={screen.isBusy} compact={!showMoreOptions} />
 
           {showMoreOptions ? (
             <div className="floating-compose-extra">
