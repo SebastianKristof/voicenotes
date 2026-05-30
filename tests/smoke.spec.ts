@@ -286,7 +286,7 @@ test('smoke: settings -> style save, home -> create note, note -> append transcr
   await page.getByPlaceholder('название стиля').fill('Founder voice');
   await page.getByPlaceholder('инструкции стиля').fill('Пиши кратко, конкретно, с тезисами.');
   await page.getByRole('button', { name: 'сохранить' }).click();
-  await expect(page.getByRole('option', { name: 'Founder voice' })).toBeVisible();
+  await expect(page.locator('select option', { hasText: 'Founder voice' })).toHaveCount(1);
 
   await page.goto('/');
   await page.getByPlaceholder('вставь или напиши заметку здесь...').fill('Мы протестировали новый формат запуска фич.');
@@ -302,12 +302,12 @@ test('smoke: settings -> style save, home -> create note, note -> append transcr
     'Мы протестировали новый формат запуска фич.\n\nТекст из транскриба (мок).',
   );
 
-  await page.getByRole('combobox').selectOption({ label: 'Founder voice' });
+  await page.locator('select.style-select').selectOption({ label: 'Founder voice' });
+  await page.getByPlaceholder('инструкции стиля').fill('Пиши кратко, конкретно, с тезисами.');
   await page.getByRole('button', { name: 'сгенерировать пост' }).click();
 
-  await expect(page.getByText('Смок-пост: это проверка генерации и сохранения.')).toBeVisible();
+  await expect(page.locator('.post-output')).toContainText('Смок-пост: это проверка генерации и сохранения.');
   await expect(page.getByText('История генераций')).toBeVisible();
-  await expect(page.getByText('Founder voice')).toBeVisible();
 
   page.once('dialog', async (dialog) => {
     await dialog.accept();

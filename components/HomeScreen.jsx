@@ -26,17 +26,18 @@ export default function HomeScreen() {
   const [showAllHistory, setShowAllHistory] = useState(false);
 
   useEffect(() => {
-    void loadHistory();
+    void loadHistoryWithStatus();
   }, []);
 
-  async function loadHistory() {
-    await screen.runAction(
-      "load",
-      async () => {
-        setNotes(await listNotes());
-      },
-      { phase: SCREEN_STATUS.LOADING, rethrow: false },
-    );
+  async function fetchHistory() {
+    setNotes(await listNotes());
+  }
+
+  async function loadHistoryWithStatus() {
+    await screen.runAction("load", fetchHistory, {
+      phase: SCREEN_STATUS.LOADING,
+      rethrow: false,
+    });
   }
 
   async function handleTranscribed({ text: nextText, sourceType }) {
@@ -59,7 +60,7 @@ export default function HomeScreen() {
         });
         const noteId = ensureNoteId(note, "Failed to open note after transcription");
 
-        await loadHistory();
+        await fetchHistory();
         router.push(`/notes/${noteId}`);
       },
       { rethrow: false },
@@ -88,7 +89,7 @@ export default function HomeScreen() {
         });
         const noteId = ensureNoteId(note, "Failed to open note after save");
 
-        await loadHistory();
+        await fetchHistory();
         router.push(`/notes/${noteId}`);
       },
       { rethrow: false },

@@ -15,6 +15,7 @@ import {
   removeNote,
   summarize,
 } from "../lib/client-api";
+import { appendTranscribedText, deriveLatestPostDraft } from "../lib/note-utils";
 import { SCREEN_STATUS, useScreenState } from "../lib/use-screen-state";
 
 const LENGTH_OPTIONS = [
@@ -22,13 +23,6 @@ const LENGTH_OPTIONS = [
   { id: "medium", label: "средний" },
   { id: "long", label: "длинный" },
 ];
-
-function appendTranscribedText(baseText, incomingText) {
-  const incoming = String(incomingText || "").trim();
-  if (!incoming) return String(baseText || "").trim();
-  const base = String(baseText || "").trim();
-  return base ? `${base}\n\n${incoming}` : incoming;
-}
 
 export default function NoteScreen({ noteId }) {
   const router = useRouter();
@@ -53,41 +47,37 @@ export default function NoteScreen({ noteId }) {
   );
 
   useEffect(() => {
-    void loadAll();
+    void loadAllWithStatus();
   }, [noteId]);
 
-  async function loadAll() {
-    await screen.runAction(
-      "load",
-      async () => {
-        const [loadedNote, loadedStyles, loadedSimilar] = await Promise.all([
-          getNote(noteId),
-          listStyles(),
-          listSimilar(noteId, 5),
-        ]);
+  async function fetchAllData() {
+    const [loadedNote, loadedStyles, loadedSimilar] = await Promise.all([
+      getNote(noteId),
+      listStyles(),
+      listSimilar(noteId, 5),
+    ]);
 
-        setNote(loadedNote);
-        setStyles(loadedStyles);
-        setSimilarNotes(loadedSimilar);
+    const latestDraft = deriveLatestPostDraft(loadedNote, loadedStyles);
 
-        setText(loadedNote.input_text || "");
-        setHeading(loadedNote.heading || "");
-        setSummaryText(loadedNote.summary || "");
-        setGeneratedPost(loadedNote.posts?.[0]?.post_text || "");
+    setNote(loadedNote);
+    setStyles(loadedStyles);
+    setSimilarNotes(loadedSimilar);
+    setText(loadedNote.input_text || "");
+    setHeading(loadedNote.heading || "");
+    setSummaryText(loadedNote.summary || "");
+    setGeneratedPost(loadedNote.posts?.[0]?.post_text || "");
+    setLength(latestDraft.length);
+    setExtraInstructions(latestDraft.extraInstructions);
+    setStyleName(latestDraft.styleName);
+    setStyleInstructions(latestDraft.styleInstructions);
+    setSelectedStyleId(latestDraft.selectedStyleId);
+  }
 
-        const latest = loadedNote.posts?.[0];
-        if (latest) {
-          setLength(latest.length || "medium");
-          setExtraInstructions(latest.extra_instructions || "");
-          setStyleName(latest.style_name || "");
-          setStyleInstructions(latest.style_instructions || "");
-
-          const style = loadedStyles.find((item) => item.name === latest.style_name);
-          setSelectedStyleId(style?.id || "");
-        }
-      },
-      { phase: SCREEN_STATUS.LOADING, rethrow: false },
-    );
+  async function loadAllWithStatus() {
+    await screen.runAction("load", fetchAllData, {
+      phase: SCREEN_STATUS.LOADING,
+      rethrow: false,
+    });
   }
 
   async function persistNote() {
@@ -146,7 +136,7 @@ export default function NoteScreen({ noteId }) {
           summary: nextSummary.summary || summaryText,
         });
 
-        await loadAll();
+        await fetchAllData();
       },
       { rethrow: false },
     );
@@ -199,7 +189,7 @@ export default function NoteScreen({ noteId }) {
         });
 
         setGeneratedPost(postText);
-        await loadAll();
+        await fetchAllData();
       },
       { rethrow: false },
     );
