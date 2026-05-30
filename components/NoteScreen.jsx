@@ -40,6 +40,7 @@ export default function NoteScreen({ noteId }) {
   const [length, setLength] = useState("medium");
   const [extraInstructions, setExtraInstructions] = useState("");
   const [generatedPost, setGeneratedPost] = useState("");
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
 
   const canGenerate = useMemo(
     () => !!text.trim() && !!styleInstructions.trim() && !screen.isBusy,
@@ -214,7 +215,7 @@ export default function NoteScreen({ noteId }) {
       </header>
       <AppNav />
 
-      <div className="container">
+      <div className="container note-screen">
         <div className="status-strip" aria-live="polite">
           {statusText || "заметка готова к редактированию"}
         </div>
@@ -237,15 +238,6 @@ export default function NoteScreen({ noteId }) {
 
         <div className="step-block">
           <div className="step-pill">шаг 1</div>
-          <div className="block-label">Capture / Edit</div>
-          <TranscribePanel onText={onTranscribed} disabled={screen.isBusy} />
-          <div className="transcript-block" style={{ marginTop: 12 }}>
-            <textarea className="manual-area" value={text} onChange={(event) => setText(event.target.value)} />
-          </div>
-        </div>
-
-        <div className="step-block">
-          <div className="step-pill">шаг 2</div>
           <div className="block-label">Summarize</div>
           <div className="summary-block">
             <input
@@ -272,7 +264,7 @@ export default function NoteScreen({ noteId }) {
         </div>
 
         <div className="step-block">
-          <div className="step-pill">шаг 3</div>
+          <div className="step-pill">шаг 2</div>
           <div className="block-label">Generate</div>
           <div className="style-block">
             <div className="style-controls">
@@ -333,7 +325,7 @@ export default function NoteScreen({ noteId }) {
         </div>
 
         <div className="step-block">
-          <div className="step-pill">шаг 4</div>
+          <div className="step-pill">шаг 3</div>
           <div className="block-label">Result</div>
           <div className="post-block">
             <div className="post-output">{generatedPost || <span className="placeholder">пост появится здесь...</span>}</div>
@@ -386,17 +378,49 @@ export default function NoteScreen({ noteId }) {
           </details>
         ) : null}
 
-        <div className="mobile-action-bar">
-          <button className="btn" type="button" onClick={saveNote} disabled={screen.isBusy}>
-            сохранить
-          </button>
-          <button className="btn btn-primary" type="button" onClick={runGenerate} disabled={!canGenerate}>
-            {screen.activeAction === "generate" ? "генерирую..." : "генерировать"}
-          </button>
-          <button className="btn btn-danger" type="button" onClick={deleteCurrentNote} disabled={screen.isBusy}>
-            удалить
-          </button>
-        </div>
+        <section className="floating-compose-panel note-floating-panel" aria-label="Панель дополнения заметки">
+          <div className="floating-compose-header">
+            <div>
+              <div className="step-pill">дополнить заметку</div>
+              <div className="block-label">Запиши или загрузи аудио</div>
+            </div>
+            <button
+              className="btn"
+              type="button"
+              onClick={() => setShowMoreOptions((prev) => !prev)}
+              aria-expanded={showMoreOptions}
+            >
+              {showMoreOptions ? "скрыть опции" : "больше опций"}
+            </button>
+          </div>
+
+          <TranscribePanel onText={onTranscribed} disabled={screen.isBusy} />
+
+          {showMoreOptions ? (
+            <div className="floating-compose-extra">
+              <div className="step-block">
+                <div className="block-label">Редактирование текста заметки</div>
+                <div className="transcript-block">
+                  <textarea className="manual-area" value={text} onChange={(event) => setText(event.target.value)} />
+                </div>
+                <div className="floating-compose-actions">
+                  <button className="btn" type="button" onClick={saveNote} disabled={screen.isBusy}>
+                    сохранить заметку
+                  </button>
+                  <button className="btn" type="button" onClick={regenerateSummary} disabled={!text.trim() || screen.isBusy}>
+                    обновить саммари
+                  </button>
+                  <button className="btn btn-primary" type="button" onClick={runGenerate} disabled={!canGenerate}>
+                    {screen.activeAction === "generate" ? "генерирую..." : "сгенерировать пост"}
+                  </button>
+                  <button className="btn btn-danger" type="button" onClick={deleteCurrentNote} disabled={screen.isBusy}>
+                    удалить заметку
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </section>
 
         {screen.error ? (
           <div className="error-box">

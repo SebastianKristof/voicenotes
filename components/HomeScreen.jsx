@@ -24,6 +24,7 @@ export default function HomeScreen() {
   const [summaryHeading, setSummaryHeading] = useState("");
   const [summaryText, setSummaryText] = useState("");
   const [showAllHistory, setShowAllHistory] = useState(false);
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
 
   useEffect(() => {
     void loadHistoryWithStatus();
@@ -133,45 +134,9 @@ export default function HomeScreen() {
       </header>
       <AppNav />
 
-      <div className="container">
+      <div className="container home-screen">
         <div className="status-strip" aria-live="polite">
           {statusText || "готово к новой заметке"}
-        </div>
-
-        <div className="step-block">
-          <div className="step-pill">шаг 1</div>
-          <div className="block-label">Запиши или загрузи аудио</div>
-          <TranscribePanel onText={handleTranscribed} disabled={screen.isBusy} />
-        </div>
-
-        <div className="step-block">
-          <div className="step-pill">шаг 2</div>
-          <div className="block-label">Или введи текст вручную</div>
-          <div className="transcript-block">
-            <textarea
-              className="manual-area"
-              placeholder="вставь или напиши заметку здесь..."
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="step-block">
-          <div className="step-pill">шаг 3</div>
-          <div className="block-label">Черновик саммари</div>
-          <div className="summary-block">
-            <h3 className="summary-heading">{summaryHeading || "Без заголовка"}</h3>
-            <p className="summary-text">{summaryText || "Сводка появится после сохранения или транскриба"}</p>
-            <div className="style-controls desktop-actions">
-              <button className="btn btn-primary" type="button" onClick={saveManualNote} disabled={!canSave}>
-                сохранить и открыть
-              </button>
-              <button className="btn" type="button" onClick={refreshSummary} disabled={!canSummarize}>
-                обновить саммари
-              </button>
-            </div>
-          </div>
         </div>
 
         <details className="collapsible-block" open>
@@ -205,14 +170,56 @@ export default function HomeScreen() {
           </div>
         </details>
 
-        <div className="mobile-action-bar">
-          <button className="btn btn-primary" type="button" onClick={saveManualNote} disabled={!canSave}>
-            сохранить и открыть
-          </button>
-          <button className="btn" type="button" onClick={refreshSummary} disabled={!canSummarize}>
-            обновить саммари
-          </button>
-        </div>
+        <section className="floating-compose-panel home-floating-panel" aria-label="Панель новой заметки">
+          <div className="floating-compose-header">
+            <div>
+              <div className="step-pill">новая заметка</div>
+              <div className="block-label">Запиши или загрузи аудио</div>
+            </div>
+            <button
+              className="btn"
+              type="button"
+              onClick={() => setShowMoreOptions((prev) => !prev)}
+              aria-expanded={showMoreOptions}
+            >
+              {showMoreOptions ? "скрыть опции" : "больше опций"}
+            </button>
+          </div>
+
+          <TranscribePanel onText={handleTranscribed} disabled={screen.isBusy} />
+
+          {showMoreOptions ? (
+            <div className="floating-compose-extra">
+              <div className="step-block">
+                <div className="block-label">Или введи текст вручную</div>
+                <div className="transcript-block">
+                  <textarea
+                    className="manual-area"
+                    placeholder="вставь или напиши заметку здесь..."
+                    value={text}
+                    onChange={(event) => setText(event.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="step-block">
+                <div className="block-label">Черновик саммари</div>
+                <div className="summary-block">
+                  <h3 className="summary-heading">{summaryHeading || "Без заголовка"}</h3>
+                  <p className="summary-text">{summaryText || "Сводка появится после сохранения или транскриба"}</p>
+                  <div className="floating-compose-actions">
+                    <button className="btn btn-primary" type="button" onClick={saveManualNote} disabled={!canSave}>
+                      сохранить и открыть
+                    </button>
+                    <button className="btn" type="button" onClick={refreshSummary} disabled={!canSummarize}>
+                      обновить саммари
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </section>
 
         {screen.error ? (
           <div className="error-box">

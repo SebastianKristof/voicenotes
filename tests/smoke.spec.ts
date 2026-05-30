@@ -289,6 +289,7 @@ test('smoke: settings -> style save, home -> create note, note -> append transcr
   await expect(page.locator('select option', { hasText: 'Founder voice' })).toHaveCount(1);
 
   await page.goto('/');
+  await page.getByRole('button', { name: 'больше опций' }).click();
   await page.getByPlaceholder('вставь или напиши заметку здесь...').fill('Мы протестировали новый формат запуска фич.');
   await page.getByRole('button', { name: 'сохранить и открыть' }).click();
   await page.waitForURL(/\/notes\/[0-9a-f-]{36}$/);
@@ -298,13 +299,17 @@ test('smoke: settings -> style save, home -> create note, note -> append transcr
     mimeType: 'audio/webm',
     buffer: Buffer.from('fake-audio'),
   });
+  await page.getByRole('button', { name: 'больше опций' }).click();
   await expect(page.locator('textarea.manual-area')).toHaveValue(
     'Мы протестировали новый формат запуска фич.\n\nТекст из транскриба (мок).',
   );
 
   await page.locator('select.style-select').selectOption({ label: 'Founder voice' });
   await page.getByPlaceholder('инструкции стиля').fill('Пиши кратко, конкретно, с тезисами.');
-  await page.getByRole('button', { name: 'сгенерировать пост' }).click();
+  await page
+    .getByLabel('Панель дополнения заметки')
+    .getByRole('button', { name: 'сгенерировать пост' })
+    .click();
 
   await expect(page.locator('.post-output')).toContainText('Смок-пост: это проверка генерации и сохранения.');
   await expect(page.getByText('История генераций')).toBeVisible();
@@ -312,7 +317,10 @@ test('smoke: settings -> style save, home -> create note, note -> append transcr
   page.once('dialog', async (dialog) => {
     await dialog.accept();
   });
-  await page.getByRole('button', { name: 'удалить заметку' }).click();
+  await page
+    .getByLabel('Панель дополнения заметки')
+    .getByRole('button', { name: 'удалить заметку' })
+    .click();
   await page.waitForURL('/');
 
   await page.goto('/');
@@ -326,6 +334,7 @@ test('mobile: no horizontal overflow on key screens', async ({ page }) => {
   await page.goto('/');
   await expectNoHorizontalOverflow(page, 'home screen');
 
+  await page.getByRole('button', { name: 'больше опций' }).click();
   await page.getByPlaceholder('вставь или напиши заметку здесь...').fill('Тест мобильной ширины экрана.');
   await page.getByRole('button', { name: 'сохранить и открыть' }).click();
   await page.waitForURL(/\/notes\/[0-9a-f-]{36}$/);
