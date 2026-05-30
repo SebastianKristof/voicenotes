@@ -39,7 +39,11 @@ export default function SettingsScreen() {
   function pickStyle(id) {
     setSelectedStyleId(id);
     const style = styles.find((item) => item.id === id);
-    if (!style) return;
+    if (!style) {
+      setName("");
+      setInstructions("");
+      return;
+    }
     setName(style.name);
     setInstructions(style.instructions);
   }

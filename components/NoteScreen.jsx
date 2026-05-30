@@ -59,6 +59,16 @@ export default function NoteScreen({ noteId }) {
     ]);
 
     const latestDraft = deriveLatestPostDraft(loadedNote, loadedStyles);
+    const fallbackStyle = loadedStyles[0] || null;
+    const styleDraft =
+      latestDraft.selectedStyleId || !fallbackStyle
+        ? latestDraft
+        : {
+            ...latestDraft,
+            selectedStyleId: fallbackStyle.id,
+            styleName: fallbackStyle.name,
+            styleInstructions: fallbackStyle.instructions,
+          };
 
     setNote(loadedNote);
     setStyles(loadedStyles);
@@ -67,11 +77,11 @@ export default function NoteScreen({ noteId }) {
     setHeading(loadedNote.heading || "");
     setSummaryText(loadedNote.summary || "");
     setGeneratedPost(loadedNote.posts?.[0]?.post_text || "");
-    setLength(latestDraft.length);
-    setExtraInstructions(latestDraft.extraInstructions);
-    setStyleName(latestDraft.styleName);
-    setStyleInstructions(latestDraft.styleInstructions);
-    setSelectedStyleId(latestDraft.selectedStyleId);
+    setLength(styleDraft.length);
+    setExtraInstructions(styleDraft.extraInstructions);
+    setStyleName(styleDraft.styleName);
+    setStyleInstructions(styleDraft.styleInstructions);
+    setSelectedStyleId(styleDraft.selectedStyleId);
   }
 
   async function loadAllWithStatus() {
