@@ -100,6 +100,41 @@ h1 {
   gap: 16px;
 }
 
+.access-container {
+  max-width: 560px;
+  margin-top: 40px;
+}
+
+.access-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.access-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.access-form .style-name-input {
+  flex: 1 1 220px;
+}
+
+.access-hint {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.access-error {
+  color: var(--accent2);
+  font-size: 0.8rem;
+}
+
 .container > * {
   min-width: 0;
 }
