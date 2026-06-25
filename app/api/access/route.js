@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { ACCESS_COOKIE_NAME, buildAccessCookieOptions, getRequiredAccessCode, isValidAccessCode } from "../../../lib/access-gate";
+import {
+  ACCESS_COOKIE_NAME,
+  buildAccessCookieOptions,
+  createLocalAccessToken,
+  getRequiredAccessCode,
+  isValidAccessCode,
+} from "../../../lib/access-gate";
 import { createAccessSession, terminateAccessSessionByToken } from "../../../lib/access-session-repo";
 
 function isConfigured() {
@@ -24,13 +30,23 @@ export async function POST(request) {
     return NextResponse.json({ error: "Invalid code." }, { status: 401 });
   }
 
-  const session = await createAccessSession({
-    ip: getClientIp(request),
-    userAgent: request.headers.get("user-agent") || "",
-  });
+  let token = "";
+  try {
+    const session = await createAccessSession({
+      ip: getClientIp(request),
+      userAgent: request.headers.get("user-agent") || "",
+    });
+    token = session.token;
+  } catch (error) {
+    console.error(
+      "Failed to create database-backed access session; falling back to signed local token.",
+      error,
+    );
+    token = await createLocalAccessToken();
+  }
 
   const response = NextResponse.json({ ok: true });
-  response.cookies.set(ACCESS_COOKIE_NAME, session.token, buildAccessCookieOptions());
+  response.cookies.set(ACCESS_COOKIE_NAME, token, buildAccessCookieOptions());
   return response;
 }
 

@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
-import { ACCESS_API_PATH, ACCESS_COOKIE_NAME, ACCESS_NEXT_PARAM, ACCESS_PAGE_PATH, getRequiredAccessCode } from "./lib/access-gate";
+import {
+  ACCESS_API_PATH,
+  ACCESS_COOKIE_NAME,
+  ACCESS_NEXT_PARAM,
+  ACCESS_PAGE_PATH,
+  getRequiredAccessCode,
+  validateLocalAccessToken,
+} from "./lib/access-gate";
 import { validateAndTouchAccessSession } from "./lib/access-session-repo";
 
 function getClientIp(request) {
@@ -42,7 +49,9 @@ export async function proxy(request) {
     userAgent: request.headers.get("user-agent") || "",
   }).catch(() => null);
 
-  if (session) {
+  const localSession = session ? null : await validateLocalAccessToken(sessionToken);
+
+  if (session || localSession) {
     return NextResponse.next();
   }
 

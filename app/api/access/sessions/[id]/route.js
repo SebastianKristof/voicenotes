@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ACCESS_COOKIE_NAME } from "../../../../../lib/access-gate";
+import { ACCESS_COOKIE_NAME, validateLocalAccessToken } from "../../../../../lib/access-gate";
 import { findAccessSessionByToken, terminateAccessSessionById } from "../../../../../lib/access-session-repo";
 
 export const runtime = "nodejs";
@@ -13,6 +13,12 @@ export async function DELETE(request, { params }) {
     }
 
     const currentCookie = request.cookies.get(ACCESS_COOKIE_NAME)?.value || "";
+    if (sessionId === "local" && await validateLocalAccessToken(currentCookie)) {
+      const response = NextResponse.json({ ok: true });
+      response.cookies.delete(ACCESS_COOKIE_NAME);
+      return response;
+    }
+
     const currentSession = await findAccessSessionByToken(currentCookie).catch(() => null);
     await terminateAccessSessionById(sessionId);
 

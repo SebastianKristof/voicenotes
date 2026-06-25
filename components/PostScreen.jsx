@@ -49,8 +49,15 @@ export default function PostScreen({ noteId, postId }) {
     await screen.runAction(
       "save",
       async () => {
-        await patchNotePost(noteId, postId, { postText: postText.trim() });
-        await loadPost();
+        const updatedPost = await patchNotePost(noteId, postId, { postText: postText.trim() });
+        setPostText(updatedPost.post_text || postText.trim());
+        setNote((current) => {
+          if (!current?.posts) return current;
+          return {
+            ...current,
+            posts: current.posts.map((item) => item.id === postId ? { ...item, ...updatedPost } : item),
+          };
+        });
       },
       { rethrow: false },
     );
