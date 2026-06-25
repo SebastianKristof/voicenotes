@@ -39,6 +39,10 @@ function noteUuid(seq: number) {
   return `00000000-0000-4000-8000-${String(seq).padStart(12, '0')}`;
 }
 
+function postUuid(seq: number) {
+  return `00000000-0000-4000-9000-${String(seq).padStart(12, '0')}`;
+}
+
 async function expectNoHorizontalOverflow(page: import('@playwright/test').Page, label: string) {
   const metrics = await page.evaluate(() => ({
     innerWidth: window.innerWidth,
@@ -236,7 +240,7 @@ async function installApiMocks(page: import('@playwright/test').Page) {
       }
       const payload = request.postDataJSON() as Record<string, unknown>;
       const post: NotePost = {
-        id: `post-${postSeq++}`,
+        id: postUuid(postSeq++),
         post_text: String(payload.postText || ''),
         length: (payload.length as NotePost['length']) || 'medium',
         extra_instructions: (payload.extraInstructions as string) || null,
@@ -248,6 +252,32 @@ async function installApiMocks(page: import('@playwright/test').Page) {
       };
       note.posts.unshift(post);
       await json(200, { post });
+      return;
+    }
+
+    const postItemMatch = path.match(/^\/api\/notes\/([^/]+)\/posts\/([^/]+)$/);
+    if (postItemMatch && method === 'PATCH') {
+      const note = notes.find((n) => n.id === postItemMatch[1]);
+      const post = note?.posts.find((p) => p.id === postItemMatch[2]);
+      if (!note || !post) {
+        await json(404, { error: 'Not found' });
+        return;
+      }
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      post.post_text = String(payload.postText || '');
+      await json(200, { post });
+      return;
+    }
+
+    if (postItemMatch && method === 'DELETE') {
+      const note = notes.find((n) => n.id === postItemMatch[1]);
+      if (!note) {
+        await json(404, { error: 'Not found' });
+        return;
+      }
+      const index = note.posts.findIndex((p) => p.id === postItemMatch[2]);
+      if (index >= 0) note.posts.splice(index, 1);
+      await json(200, { ok: true });
       return;
     }
 
@@ -294,33 +324,35 @@ test('smoke: settings -> style save, home -> create note, note -> append transcr
   await page.getByRole('button', { name: 'сохранить и открыть' }).click();
   await page.waitForURL(/\/notes\/[0-9a-f-]{36}$/);
 
+  await page.getByRole('button', { name: 'больше опций' }).click();
   await page.locator('input[type="file"]').setInputFiles({
     name: 'clip.webm',
     mimeType: 'audio/webm',
     buffer: Buffer.from('fake-audio'),
   });
-  await page.getByRole('button', { name: 'больше опций' }).click();
-  await expect(page.locator('textarea.manual-area')).toHaveValue(
-    'Мы протестировали новый формат запуска фич.\n\nТекст из транскриба (мок).',
-  );
+  await expect(page.locator('.transcript-reader')).toContainText('Текст из транскриба (мок).');
+  await page.getByRole('button', { name: 'скрыть опции' }).click();
 
+  await page.getByRole('button', { name: 'создать пост' }).click();
   await page.locator('select.style-select').selectOption({ label: 'Founder voice' });
   await page.getByPlaceholder('инструкции стиля').fill('Пиши кратко, конкретно, с тезисами.');
-  await page
-    .getByLabel('Панель дополнения заметки')
-    .getByRole('button', { name: 'сгенерировать пост' })
-    .click();
+  await page.getByRole('button', { name: 'сгенерировать пост' }).click();
 
   await expect(page.locator('.post-output')).toContainText('Смок-пост: это проверка генерации и сохранения.');
   await expect(page.getByText('История генераций')).toBeVisible();
+  await page.getByRole('link', { name: /Смок-пост/ }).click();
+  await page.waitForURL(/\/posts\/[0-9a-f-]{36}$/);
+  await page.getByPlaceholder('пост').fill('Отредактированный смок-пост.');
+  await page.getByRole('button', { name: 'сохранить' }).click();
+  await expect(page.getByPlaceholder('пост')).toHaveValue('Отредактированный смок-пост.');
+  await page.getByRole('link', { name: 'Назад к заметке' }).click();
+  await page.waitForURL(/\/notes\/[0-9a-f-]{36}$/);
 
   page.once('dialog', async (dialog) => {
     await dialog.accept();
   });
-  await page
-    .getByLabel('Панель дополнения заметки')
-    .getByRole('button', { name: 'удалить заметку' })
-    .click();
+  await page.getByRole('button', { name: 'Действия заметки' }).click();
+  await page.getByRole('button', { name: 'удалить заметку' }).click();
   await page.waitForURL('/');
 
   await page.goto('/');

@@ -1,4 +1,5 @@
 import { deleteNote, getNote, updateNote } from "../../../../lib/mvp-hub-repo";
+import { getPublicErrorMessage, getStatusForError } from "../../../../lib/api-errors";
 
 export const runtime = "nodejs";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -18,10 +19,11 @@ export async function GET(_request, { params }) {
     const note = await getNote(noteId);
     return Response.json({ note });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to load note";
+    const message = getPublicErrorMessage(error, "Failed to load note");
+    const status = getStatusForError(error);
     return Response.json(
       { error: message },
-      { status: message.includes("invalid note id") ? 400 : 404 },
+      { status: message.includes("invalid note id") ? 400 : status === 503 ? 503 : 404 },
     );
   }
 }
@@ -34,10 +36,11 @@ export async function PATCH(request, { params }) {
     const note = await updateNote(noteId, payload);
     return Response.json({ note });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to update note";
+    const message = getPublicErrorMessage(error, "Failed to update note");
+    const status = getStatusForError(error);
     return Response.json(
       { error: message },
-      { status: 400 },
+      { status: status === 503 ? 503 : 400 },
     );
   }
 }
@@ -49,10 +52,11 @@ export async function DELETE(_request, { params }) {
     await deleteNote(noteId);
     return Response.json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to delete note";
+    const message = getPublicErrorMessage(error, "Failed to delete note");
+    const status = getStatusForError(error);
     return Response.json(
       { error: message },
-      { status: message.includes("invalid note id") ? 400 : 500 },
+      { status: message.includes("invalid note id") ? 400 : status },
     );
   }
 }

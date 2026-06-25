@@ -25,6 +25,12 @@ Required variables:
 - `OPENROUTER_API_KEY`
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `ACCESS_CODE` (shared access code required to open app/API)
+
+Access control behavior:
+- unauthenticated users are redirected to `/access`,
+- successful code entry creates a persistent session,
+- sessions are listed in `Settings` and can be terminated manually.
 
 Optional variables:
 - `OPENROUTER_TEXT_MODEL` (default: `openai/gpt-4o-mini`)

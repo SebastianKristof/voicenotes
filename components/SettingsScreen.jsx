@@ -2,7 +2,14 @@
 
 import { useEffect, useState } from "react";
 import AppNav from "./AppNav";
-import { listStyles, removeStyle, saveStyle } from "../lib/client-api";
+import {
+  listOpenSessions,
+  listStyles,
+  logoutAccessSession,
+  removeStyle,
+  saveStyle,
+  terminateOpenSession,
+} from "../lib/client-api";
 import { SCREEN_STATUS, useScreenState } from "../lib/use-screen-state";
 
 const THEME_KEY = "voicenotes_theme";
@@ -14,11 +21,12 @@ export default function SettingsScreen() {
   const [name, setName] = useState("");
   const [instructions, setInstructions] = useState("");
   const [theme, setTheme] = useState("dark");
+  const [sessions, setSessions] = useState([]);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem(THEME_KEY);
     if (savedTheme) setTheme(savedTheme);
-    void loadStyles();
+    void loadInitialData();
   }, []);
 
   useEffect(() => {
@@ -26,11 +34,19 @@ export default function SettingsScreen() {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
 
-  async function loadStyles() {
+  async function fetchStyles() {
+    setStyles(await listStyles());
+  }
+
+  async function fetchSessions() {
+    setSessions(await listOpenSessions());
+  }
+
+  async function loadInitialData() {
     await screen.runAction(
       "load",
       async () => {
-        setStyles(await listStyles());
+        await Promise.all([fetchStyles(), fetchSessions()]);
       },
       { phase: SCREEN_STATUS.LOADING, rethrow: false },
     );
@@ -59,7 +75,7 @@ export default function SettingsScreen() {
           name: name.trim(),
           instructions: instructions.trim(),
         });
-        await loadStyles();
+        await fetchStyles();
         setSelectedStyleId(saved.id);
       },
       { rethrow: false },
@@ -76,16 +92,51 @@ export default function SettingsScreen() {
         setSelectedStyleId("");
         setName("");
         setInstructions("");
-        await loadStyles();
+        await fetchStyles();
+      },
+      { rethrow: false },
+    );
+  }
+
+  async function onTerminateSession(sessionId) {
+    await screen.runAction(
+      "terminateSession",
+      async () => {
+        await terminateOpenSession(sessionId);
+        await fetchSessions();
+      },
+      { rethrow: false },
+    );
+  }
+
+  async function onRefreshSessions() {
+    await screen.runAction(
+      "refreshSessions",
+      async () => {
+        await fetchSessions();
+      },
+      { rethrow: false },
+    );
+  }
+
+  async function onSignOutCurrentSession() {
+    await screen.runAction(
+      "signOut",
+      async () => {
+        await logoutAccessSession();
+        window.location.assign("/access");
       },
       { rethrow: false },
     );
   }
 
   const statusTextByAction = {
-    load: "загружаю стили...",
+    load: "загружаю настройки...",
     save: "сохраняю стиль...",
     delete: "удаляю стиль...",
+    refreshSessions: "обновляю список сессий...",
+    terminateSession: "завершаю сессию...",
+    signOut: "завершаю текущую сессию...",
   };
 
   const statusText = screen.isBusy ? (statusTextByAction[screen.activeAction] || "выполняю действие...") : "";
@@ -138,6 +189,55 @@ export default function SettingsScreen() {
               <button className="btn" type="button" onClick={onDelete} disabled={!selectedStyleId || screen.isBusy}>
                 удалить
               </button>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div className="block-label">Открытые сессии</div>
+          <div className="style-block">
+            <div className="style-controls">
+              <button className="btn" type="button" onClick={onRefreshSessions} disabled={screen.isBusy}>
+                обновить список
+              </button>
+              <button className="btn" type="button" onClick={onSignOutCurrentSession} disabled={screen.isBusy}>
+                выйти с этого устройства
+              </button>
+            </div>
+
+            <div className="artifact-list">
+              {sessions.length ? sessions.map((session) => (
+                <div key={session.id} className="artifact-item">
+                  <div className="artifact-meta wrap-meta">
+                    <span>ID: {session.id}</span>
+                    <span>{session.current ? "текущая" : "активна"}</span>
+                  </div>
+                  <div className="artifact-post mono-wrap">
+                    создана: {new Date(session.created_at).toLocaleString()}
+                  </div>
+                  <div className="artifact-post mono-wrap">
+                    last seen: {new Date(session.last_seen_at).toLocaleString()}
+                  </div>
+                  <div className="artifact-post mono-wrap">
+                    ip: {session.last_seen_ip || session.created_ip || "unknown"}
+                  </div>
+                  <div className="artifact-post mono-wrap">
+                    ua: {session.last_seen_user_agent || session.user_agent || "unknown"}
+                  </div>
+                  <div className="artifact-actions">
+                    <button
+                      className="btn btn-danger"
+                      type="button"
+                      onClick={() => onTerminateSession(session.id)}
+                      disabled={screen.isBusy}
+                    >
+                      завершить
+                    </button>
+                  </div>
+                </div>
+              )) : (
+                <span className="placeholder">нет открытых сессий</span>
+              )}
             </div>
           </div>
         </div>
