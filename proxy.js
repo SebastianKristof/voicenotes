@@ -24,6 +24,10 @@ export async function proxy(request) {
     return NextResponse.next();
   }
 
+  if (process.env.PLAYWRIGHT_BYPASS_ACCESS === "1") {
+    return NextResponse.next();
+  }
+
   const requiredCode = getRequiredAccessCode();
   if (!requiredCode) {
     if (pathname.startsWith("/api/")) {

@@ -309,8 +309,9 @@ export default function TranscribePanel({ onText, disabled, compact = false }) {
         ) : null}
       </div>
 
+      {!compact ? (
       <div className="transcribe-upload">
-        {!compact ? <div className="block-label">или загрузи аудиофайл</div> : null}
+        <div className="block-label">или загрузи аудиофайл</div>
         <div className="upload-block">
           <input
             ref={fileInputRef}
@@ -336,6 +337,7 @@ export default function TranscribePanel({ onText, disabled, compact = false }) {
           {showUploadName ? <span className={`upload-name ${uploadName.includes(".") ? "ready" : ""}`}>{uploadName}</span> : null}
         </div>
       </div>
+      ) : null}
     </div>
   );
 }

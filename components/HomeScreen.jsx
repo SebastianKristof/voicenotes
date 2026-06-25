@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import AppNav from "./AppNav";
 import TranscribePanel from "./TranscribePanel";
 import { createNote, listNotes, summarize } from "../lib/client-api";
 import { SCREEN_STATUS, useScreenState } from "../lib/use-screen-state";
@@ -16,6 +15,15 @@ function ensureNoteId(note, context) {
   return id;
 }
 
+function formatNoteTime(value) {
+  if (!value) return "";
+  return new Date(value).toLocaleString();
+}
+
+function notePreview(item) {
+  return item.summary || item.input_text || "Без саммари";
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const screen = useScreenState();
@@ -23,7 +31,6 @@ export default function HomeScreen() {
   const [text, setText] = useState("");
   const [summaryHeading, setSummaryHeading] = useState("");
   const [summaryText, setSummaryText] = useState("");
-  const [showAllHistory, setShowAllHistory] = useState(false);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
 
   useEffect(() => {
@@ -112,8 +119,7 @@ export default function HomeScreen() {
     );
   }
 
-  const historyItems = showAllHistory ? notes : notes.slice(0, 3);
-  const hasMoreHistory = notes.length > 3;
+  const historyItems = notes;
   const canSave = !!text.trim() && !screen.isBusy;
   const canSummarize = !!text.trim() && !screen.isBusy;
 
@@ -128,47 +134,48 @@ export default function HomeScreen() {
 
   return (
     <>
-      <header>
-        <h1>Voice → Post</h1>
-        <span className="subtitle">запись, заметка, саммари</span>
+      <header className="app-header">
+        <div>
+          <h1>Voice → Post</h1>
+          <span className="subtitle">запись, заметка, саммари</span>
+        </div>
+        <Link className="icon-btn text-icon-btn" href="/settings" aria-label="Настройки">
+          ⚙
+        </Link>
       </header>
-      <AppNav />
 
       <div className="container home-screen">
-        <div className="status-strip" aria-live="polite">
-          {statusText || "готово к новой заметке"}
-        </div>
-
-        <details className="collapsible-block" open>
-          <summary className="collapsible-summary">
-            История заметок
-            <span className="count-badge">{notes.length}</span>
-          </summary>
-          <div className="artifact-block">
-            {historyItems.length ? (
-              <div className="artifact-list">
-                {historyItems.map((item) => (
-                  <Link key={item.id} className="artifact-item" href={`/notes/${item.id}`}>
-                    <div className="artifact-meta">
-                      <span>{new Date(item.created_at).toLocaleString()}</span>
-                    </div>
-                    <div className="artifact-heading">{item.heading || "Без заголовка"}</div>
-                    <div className="artifact-post">{item.summary || "Без саммари"}</div>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <span className="placeholder">пока нет заметок</span>
-            )}
-            {hasMoreHistory ? (
-              <div className="style-controls">
-                <button className="btn" type="button" onClick={() => setShowAllHistory((prev) => !prev)}>
-                  {showAllHistory ? "показать меньше" : "показать все"}
-                </button>
-              </div>
-            ) : null}
+        {statusText ? (
+          <div className="status-strip" aria-live="polite">
+            {statusText}
           </div>
-        </details>
+        ) : null}
+
+        <section className="feed-section" aria-label="История заметок">
+          <div className="feed-header">
+            <div>
+              <div className="block-label">История заметок</div>
+              <div className="feed-count">{notes.length} заметок</div>
+            </div>
+          </div>
+
+          {historyItems.length ? (
+            <div className="note-feed">
+              {historyItems.map((item) => (
+                <Link key={item.id} className="note-feed-item" href={`/notes/${item.id}`}>
+                  <div className="artifact-meta">
+                    <span>{formatNoteTime(item.created_at)}</span>
+                    <span>{item.dictated_text ? "recording" : "manual"}</span>
+                  </div>
+                  <div className="artifact-heading">{item.heading || "Без заголовка"}</div>
+                  <div className="artifact-post note-preview">{notePreview(item)}</div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-feed">пока нет заметок</div>
+          )}
+        </section>
 
         <section
           className={`floating-compose-panel home-floating-panel ${showMoreOptions ? "expanded" : "collapsed"}`}
@@ -177,7 +184,7 @@ export default function HomeScreen() {
           <div className="floating-compose-header">
             <div>
               <div className="step-pill">новая заметка</div>
-              <div className="block-label">Запиши или загрузи аудио</div>
+              <div className="block-label">Запиши аудио</div>
             </div>
             <button
               className="btn"
