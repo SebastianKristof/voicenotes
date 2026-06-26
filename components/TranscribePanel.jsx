@@ -2,6 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { transcribeFile } from "../lib/client-api";
+import { clearLastRecording, loadLastRecording, saveLastRecording } from "../lib/recording-store";
+
+const LANGUAGE_OPTIONS = [
+  { value: "", label: "auto" },
+  { value: "ru", label: "russian" },
+  { value: "en", label: "english" },
+];
 
 function formatSeconds(seconds) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
@@ -17,10 +24,14 @@ export default function TranscribePanel({ onText, disabled, compact = false }) {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [lastRecordingUrl, setLastRecordingUrl] = useState("");
   const [lastRecordingName, setLastRecordingName] = useState("");
+  const [lastRecordingFile, setLastRecordingFile] = useState(null);
   const [uploadName, setUploadName] = useState("mp3, m4a, wav, ogg, webm...");
+  const [language, setLanguage] = useState("");
+  const [hasRecoveredRecording, setHasRecoveredRecording] = useState(false);
 
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+  const cancelRecordingRef = useRef(false);
   const timerRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
@@ -35,6 +46,7 @@ export default function TranscribePanel({ onText, disabled, compact = false }) {
   const uploadLocked = controlsLocked || isRecording;
 
   useEffect(() => {
+    void restoreRecording();
     return () => {
       clearTimer();
       stopLevelMeter();
@@ -44,6 +56,21 @@ export default function TranscribePanel({ onText, disabled, compact = false }) {
       if (recorder && recorder.state !== "inactive") recorder.stop();
     };
   }, []);
+
+  async function restoreRecording() {
+    const recovered = await loadLastRecording();
+    if (!recovered?.blob || !recovered?.name) return;
+    const file = new File([recovered.blob], recovered.name, {
+      type: recovered.type || recovered.blob.type || "audio/webm",
+    });
+    setLastRecordingFile(file);
+    setLastRecordingName(recovered.name);
+    setHasRecoveredRecording(true);
+    const url = URL.createObjectURL(recovered.blob);
+    recordingUrlRef.current = url;
+    setLastRecordingUrl(url);
+    setRecStatus("найдена несохраненная запись");
+  }
 
   function clearTimer() {
     if (timerRef.current) {
@@ -125,18 +152,20 @@ export default function TranscribePanel({ onText, disabled, compact = false }) {
     setIsTranscribing(true);
     setRecStatus("отправляю в Whisper...");
     try {
-      const text = await transcribeFile(file);
+      const text = await transcribeFile(file, { language });
       if (!text) {
         setRecStatus("пустой ответ от Whisper, попробуй снова");
         return;
       }
       setRecStatus("транскрипция готова");
       try {
-        await onText({ text, sourceType });
+        await onText({ text, sourceType, language: language || "auto" });
       } catch (error) {
         setRecStatus(`ошибка сохранения заметки: ${error.message}`);
         return;
       }
+      await clearLastRecording();
+      setHasRecoveredRecording(false);
     } catch (error) {
       setRecStatus(`ошибка Whisper: ${error.message}`);
     } finally {
@@ -162,8 +191,11 @@ export default function TranscribePanel({ onText, disabled, compact = false }) {
     recordingUrlRef.current = url;
     setLastRecordingUrl(url);
     setLastRecordingName(fileName);
+    const file = new File([blob], fileName, { type: mime });
+    setLastRecordingFile(file);
+    await saveLastRecording({ blob, name: fileName, type: mime, savedAt: new Date().toISOString() });
 
-    await handleTranscribed(new File([blob], fileName, { type: mime }), "recording");
+    await handleTranscribed(file, "recording");
   }
 
   function stopRecording() {
@@ -173,6 +205,22 @@ export default function TranscribePanel({ onText, disabled, compact = false }) {
     setRecStatus("обрабатываю запись...");
     resetRecordingUi();
     recorder.stop();
+  }
+
+  function cancelRecording() {
+    const recorder = mediaRecorderRef.current;
+    cancelRecordingRef.current = true;
+    audioChunksRef.current = [];
+    setRecStatus("запись отменена");
+    resetRecordingUi();
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    stopLevelMeter();
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+    }
   }
 
   async function startRecording() {
@@ -197,6 +245,7 @@ export default function TranscribePanel({ onText, disabled, compact = false }) {
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
+      cancelRecordingRef.current = false;
 
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) audioChunksRef.current.push(event.data);
@@ -209,6 +258,11 @@ export default function TranscribePanel({ onText, disabled, compact = false }) {
           streamRef.current = null;
         }
         stopLevelMeter();
+        if (cancelRecordingRef.current) {
+          cancelRecordingRef.current = false;
+          audioChunksRef.current = [];
+          return;
+        }
         await transcribeAudioBlob();
       };
 
@@ -232,10 +286,32 @@ export default function TranscribePanel({ onText, disabled, compact = false }) {
   const levelLabel = useMemo(() => Math.round(audioLevel * 100), [audioLevel]);
 
   const showUploadName = !compact || uploadName.includes(".");
+  const canRetranscribe = !!lastRecordingFile && !controlsLocked && !isRecording;
 
   return (
     <div className={`transcribe-panel ${compact ? "transcribe-panel-compact" : ""}`}>
       <div className="mic-section">
+        {!compact ? (
+          <div className="transcribe-options">
+            <label>
+              язык
+              <select value={language} onChange={(event) => setLanguage(event.target.value)} disabled={controlsLocked || isRecording}>
+                {LANGUAGE_OPTIONS.map((option) => (
+                  <option key={option.value || "auto"} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="btn"
+              type="button"
+              onClick={() => lastRecordingFile && handleTranscribed(lastRecordingFile, "recording")}
+              disabled={!canRetranscribe}
+            >
+              перераспознать
+            </button>
+          </div>
+        ) : null}
+
         {!compact ? (
           <div className={`waveform ${isRecording ? "visible recording" : ""}`}>
             <span />
@@ -294,6 +370,12 @@ export default function TranscribePanel({ onText, disabled, compact = false }) {
           </svg>
         </button>
 
+        {isRecording ? (
+          <button className="btn btn-danger" type="button" onClick={cancelRecording}>
+            отменить запись
+          </button>
+        ) : null}
+
         <div className={`rec-status ${isRecording ? "active" : ""}`} aria-live="polite">{recStatus}</div>
         <div className={`mic-hint ${micHint ? "visible" : ""}`}>{micHint}</div>
         {!compact ? (
@@ -303,9 +385,26 @@ export default function TranscribePanel({ onText, disabled, compact = false }) {
         ) : null}
 
         {!compact && lastRecordingUrl ? (
-          <a className="recording-download" href={lastRecordingUrl} download={lastRecordingName}>
-            скачать запись ({lastRecordingName})
-          </a>
+          <div className="recording-recovery">
+            {hasRecoveredRecording ? <span>восстановлена несохраненная запись</span> : null}
+            <a className="recording-download" href={lastRecordingUrl} download={lastRecordingName}>
+              скачать запись ({lastRecordingName})
+            </a>
+            <button
+              className="btn"
+              type="button"
+              onClick={async () => {
+                await clearLastRecording();
+                setHasRecoveredRecording(false);
+                setLastRecordingFile(null);
+                setLastRecordingName("");
+                setLastRecordingUrl("");
+                setRecStatus("запись удалена");
+              }}
+            >
+              удалить запись
+            </button>
+          </div>
         ) : null}
       </div>
 
@@ -322,6 +421,8 @@ export default function TranscribePanel({ onText, disabled, compact = false }) {
               const file = event.target.files?.[0];
               if (!file) return;
               setUploadName(file.name);
+              setLastRecordingFile(file);
+              setLastRecordingName(file.name);
               await handleTranscribed(file, "upload");
               event.target.value = "";
             }}

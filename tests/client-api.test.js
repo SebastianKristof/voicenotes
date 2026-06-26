@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { apiJson, listNotes } from "../lib/client-api.js";
+import { apiJson, listNotes, transcribeFile } from "../lib/client-api.js";
 
 test("apiJson returns parsed json on ok response", async () => {
   const originalFetch = global.fetch;
@@ -45,8 +45,45 @@ test("listNotes calls /api/notes and returns notes array", async () => {
   };
 
   try {
-    const notes = await listNotes();
-    assert.deepEqual(notes, [{ id: "n1" }]);
+    const result = await listNotes();
+    assert.deepEqual(result, { notes: [{ id: "n1" }], nextCursor: "" });
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("listNotes sends pagination and filter params", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async (url) => {
+    assert.equal(url, "/api/notes?limit=20&cursor=abc&tag=work&q=launch");
+    return new Response(JSON.stringify({ notes: [], nextCursor: "next" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  try {
+    const result = await listNotes({ limit: 20, cursor: "abc", tag: "work", q: "launch" });
+    assert.deepEqual(result, { notes: [], nextCursor: "next" });
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("transcribeFile sends forced language when provided", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async (_url, options) => {
+    assert.equal(options.method, "POST");
+    assert.equal(options.body.get("language"), "ru");
+    return new Response(JSON.stringify({ text: "готово" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  try {
+    const text = await transcribeFile(new File([new Blob(["audio"])], "clip.webm"), { language: "ru" });
+    assert.equal(text, "готово");
   } finally {
     global.fetch = originalFetch;
   }

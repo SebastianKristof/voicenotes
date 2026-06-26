@@ -9,6 +9,7 @@ import {
   createNotePost,
   generatePost,
   getNote,
+  listTags,
   listSimilar,
   listStyles,
   patchNote,
@@ -36,6 +37,9 @@ export default function NoteScreen({ noteId }) {
   const [note, setNote] = useState(null);
   const [similarNotes, setSimilarNotes] = useState([]);
   const [styles, setStyles] = useState([]);
+  const [tags, setTags] = useState([]);
+  const [selectedTagSlugs, setSelectedTagSlugs] = useState([]);
+  const [customTagName, setCustomTagName] = useState("");
   const [text, setText] = useState("");
   const [heading, setHeading] = useState("");
   const [summaryText, setSummaryText] = useState("");
@@ -65,6 +69,7 @@ export default function NoteScreen({ noteId }) {
       listStyles(),
       listSimilar(noteId, 5),
     ]);
+    const loadedTags = await listTags();
 
     const latestDraft = deriveLatestPostDraft(loadedNote, loadedStyles);
     const fallbackStyle = loadedStyles[0] || null;
@@ -80,6 +85,8 @@ export default function NoteScreen({ noteId }) {
 
     setNote(loadedNote);
     setStyles(loadedStyles);
+    setTags(loadedTags);
+    setSelectedTagSlugs((loadedNote.tags || []).map((tag) => tag.slug));
     setSimilarNotes(loadedSimilar);
     setText(loadedNote.input_text || "");
     setHeading(loadedNote.heading || "");
@@ -105,6 +112,7 @@ export default function NoteScreen({ noteId }) {
       dictatedText: text.trim(),
       heading: heading || null,
       summary: summaryText || null,
+      tagSlugs: selectedTagSlugs,
     });
 
     setNote((prev) => ({ ...(prev || {}), ...updated }));
@@ -141,7 +149,7 @@ export default function NoteScreen({ noteId }) {
     );
   }
 
-  async function onTranscribed({ text: nextText }) {
+  async function onTranscribed({ text: nextText, language }) {
     const mergedInputText = appendTranscribedText(text, nextText);
     const mergedDictatedText = appendTranscribedText(note?.dictated_text || "", nextText);
     setText(mergedInputText);
@@ -160,6 +168,14 @@ export default function NoteScreen({ noteId }) {
           dictatedText: mergedDictatedText,
           heading: nextSummary.heading || heading,
           summary: nextSummary.summary || summaryText,
+          meta: {
+            ...(note?.meta || {}),
+            transcription: {
+              sourceType: "recording",
+              language,
+              updatedAt: new Date().toISOString(),
+            },
+          },
         });
 
         await fetchAllData();
@@ -220,6 +236,27 @@ export default function NoteScreen({ noteId }) {
     );
   }
 
+  async function saveTags() {
+    await screen.runAction(
+      "save-tags",
+      async () => {
+        const extra = customTagName.trim();
+        const tagSlugs = extra ? [...selectedTagSlugs, extra] : selectedTagSlugs;
+        const updated = await patchNote(noteId, { tagSlugs });
+        setCustomTagName("");
+        setNote((prev) => ({ ...(prev || {}), ...updated }));
+        const loadedTags = await listTags();
+        setTags(loadedTags);
+        setSelectedTagSlugs((updated.tags || []).map((tag) => tag.slug));
+      },
+      { rethrow: false },
+    );
+  }
+
+  function toggleTag(slug) {
+    setSelectedTagSlugs((prev) => prev.includes(slug) ? prev.filter((item) => item !== slug) : [...prev, slug]);
+  }
+
   const statusTextByAction = {
     load: "загружаю данные заметки...",
     transcribe: "обновляю заметку из транскриба...",
@@ -227,6 +264,7 @@ export default function NoteScreen({ noteId }) {
     save: "сохраняю заметку...",
     generate: "генерирую пост...",
     delete: "удаляю заметку...",
+    "save-tags": "сохраняю теги...",
   };
   const statusText = screen.isBusy ? statusTextByAction[screen.activeAction] || "выполняю действие..." : "";
 
@@ -305,6 +343,11 @@ export default function NoteScreen({ noteId }) {
             <>
               <h2 className="note-title">{heading || "Без заголовка"}</h2>
               {summaryText ? <p className="summary-text reader-summary">{summaryText}</p> : null}
+              {note?.tags?.length ? (
+                <div className="tag-row reader-tags">
+                  {note.tags.map((tag) => <span key={tag.slug} className="tag-chip">{tag.name}</span>)}
+                </div>
+              ) : null}
               <div className="transcript-reader">{text || <span className="placeholder">транскрипт пуст</span>}</div>
               <div className="reader-actions">
                 <button className="btn" type="button" onClick={copyTranscript} disabled={!text.trim()}>
@@ -319,6 +362,33 @@ export default function NoteScreen({ noteId }) {
               </div>
             </>
           )}
+        </section>
+
+        <section className="tag-editor">
+          <div className="block-label">Теги</div>
+          <div className="tag-picker">
+            {tags.map((tag) => (
+              <button
+                key={tag.slug}
+                type="button"
+                className={`tag-chip tag-button ${selectedTagSlugs.includes(tag.slug) ? "active" : ""}`}
+                onClick={() => toggleTag(tag.slug)}
+              >
+                {tag.name}
+              </button>
+            ))}
+          </div>
+          <div className="style-controls">
+            <input
+              className="style-name-input"
+              value={customTagName}
+              onChange={(event) => setCustomTagName(event.target.value)}
+              placeholder="новый тег латиницей"
+            />
+            <button className="btn" type="button" onClick={saveTags} disabled={screen.isBusy}>
+              сохранить теги
+            </button>
+          </div>
         </section>
 
         {showCreatePost ? (

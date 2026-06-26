@@ -28,7 +28,15 @@ type Note = {
   dictated_text: string | null;
   created_at: string;
   updated_at: string;
+  meta: Record<string, unknown>;
+  tags: Tag[];
   posts: NotePost[];
+};
+
+type Tag = {
+  id: string;
+  slug: string;
+  name: string;
 };
 
 function nowIso() {
@@ -57,6 +65,11 @@ async function expectNoHorizontalOverflow(page: import('@playwright/test').Page,
 async function installApiMocks(page: import('@playwright/test').Page) {
   const styles: Style[] = [];
   const notes: Note[] = [];
+  const tags: Tag[] = [
+    { id: 'tag-1', slug: 'business', name: 'business' },
+    { id: 'tag-2', slug: 'work-projects', name: 'work projects' },
+    { id: 'tag-3', slug: 'home', name: 'home' },
+  ];
 
   let styleSeq = 1;
   let noteSeq = 1;
@@ -78,6 +91,11 @@ async function installApiMocks(page: import('@playwright/test').Page) {
 
     if (path === '/api/styles' && method === 'GET') {
       await json(200, { styles });
+      return;
+    }
+
+    if (path === '/api/tags' && method === 'GET') {
+      await json(200, { tags });
       return;
     }
 
@@ -129,11 +147,13 @@ async function installApiMocks(page: import('@playwright/test').Page) {
           summary: n.summary,
           input_text: n.input_text,
           dictated_text: n.dictated_text,
+          meta: n.meta,
+          tags: n.tags,
           created_at: n.created_at,
           updated_at: n.updated_at,
         }))
         .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-      await json(200, { notes: list });
+      await json(200, { notes: list, nextCursor: '' });
       return;
     }
 
@@ -145,6 +165,8 @@ async function installApiMocks(page: import('@playwright/test').Page) {
         summary: String(payload.summary || ''),
         input_text: String(payload.inputText || ''),
         dictated_text: payload.dictatedText ? String(payload.dictatedText) : null,
+        meta: (payload.meta as Record<string, unknown>) || {},
+        tags: [tags[0]],
         created_at: nowIso(),
         updated_at: nowIso(),
         posts: [],
@@ -157,6 +179,8 @@ async function installApiMocks(page: import('@playwright/test').Page) {
           summary: note.summary,
           input_text: note.input_text,
           dictated_text: note.dictated_text,
+          meta: note.meta,
+          tags: note.tags,
           created_at: note.created_at,
           updated_at: note.updated_at,
         },
@@ -178,6 +202,8 @@ async function installApiMocks(page: import('@playwright/test').Page) {
           summary: note.summary,
           input_text: note.input_text,
           dictated_text: note.dictated_text,
+          meta: note.meta,
+          tags: note.tags,
           created_at: note.created_at,
           updated_at: note.updated_at,
           posts: note.posts,
@@ -199,6 +225,12 @@ async function installApiMocks(page: import('@playwright/test').Page) {
       }
       if (payload.heading !== undefined) note.heading = String(payload.heading || '');
       if (payload.summary !== undefined) note.summary = String(payload.summary || '');
+      if (payload.meta !== undefined) note.meta = payload.meta as Record<string, unknown>;
+      if (Array.isArray(payload.tagSlugs)) {
+        note.tags = payload.tagSlugs
+          .map((slug) => tags.find((tag) => tag.slug === slug) || { id: `tag-${tags.length + 1}`, slug: String(slug), name: String(slug) })
+          .filter(Boolean);
+      }
       note.updated_at = nowIso();
       await json(200, {
         note: {
@@ -207,6 +239,8 @@ async function installApiMocks(page: import('@playwright/test').Page) {
           summary: note.summary,
           input_text: note.input_text,
           dictated_text: note.dictated_text,
+          meta: note.meta,
+          tags: note.tags,
           created_at: note.created_at,
           updated_at: note.updated_at,
         },

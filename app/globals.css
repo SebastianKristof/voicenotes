@@ -757,16 +757,66 @@ a.artifact-item:hover {
   font-size: 0.8rem;
 }
 
+.feed-tools,
+.selection-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.feed-tools .style-name-input {
+  flex: 1 1 220px;
+}
+
+.selection-toolbar {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 10px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.selection-toolbar select,
+.selection-toolbar input,
+.transcribe-options select {
+  min-height: 38px;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: var(--text);
+  font-family: 'Martian Mono', monospace;
+  padding: 8px 10px;
+}
+
 .note-feed {
   border-top: 1px solid var(--border);
 }
 
 .note-feed-item {
-  display: block;
+  display: flex;
+  gap: 10px;
   color: var(--text);
   text-decoration: none;
   padding: 16px 0;
   border-bottom: 1px solid var(--border);
+}
+
+.note-feed-item.selectable {
+  cursor: pointer;
+}
+
+.note-feed-item.selected {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.note-select {
+  flex: 0 0 auto;
+  padding-top: 2px;
+}
+
+.note-feed-body {
+  min-width: 0;
+  flex: 1;
 }
 
 .note-feed-item:hover .artifact-heading,
@@ -787,6 +837,58 @@ a.artifact-item:hover {
   color: var(--muted);
   padding: 18px;
   font-size: 0.86rem;
+}
+
+.tag-row,
+.tag-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag-row {
+  margin: 6px 0;
+}
+
+.tag-chip {
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  color: var(--muted);
+  padding: 3px 8px;
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+.tag-button {
+  cursor: pointer;
+  font-family: 'Martian Mono', monospace;
+}
+
+.tag-button.active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.tag-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+}
+
+.reader-tags {
+  margin-bottom: 14px;
+}
+
+.lazy-sentinel {
+  min-height: 42px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
 }
 
 .reader-block {
@@ -1055,6 +1157,30 @@ a.artifact-item:hover {
 .transcribe-panel-compact .upload-name {
   font-size: 0.72rem;
   line-height: 1.2;
+}
+
+.transcribe-options,
+.recording-recovery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+.transcribe-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.recording-recovery {
+  color: var(--muted);
+  font-size: 0.76rem;
 }
 
 .mobile-action-bar {
