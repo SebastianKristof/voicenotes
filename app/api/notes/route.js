@@ -4,10 +4,16 @@ import { getPublicErrorMessage, getStatusForError } from "../../../lib/api-error
 export const runtime = "nodejs";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export async function GET() {
+export async function GET(request) {
   try {
-    const notes = await listNotes();
-    return Response.json({ notes });
+    const searchParams = new URL(request.url).searchParams;
+    const result = await listNotes({
+      limit: searchParams.get("limit"),
+      cursor: searchParams.get("cursor"),
+      tag: searchParams.get("tag"),
+      q: searchParams.get("q"),
+    });
+    return Response.json(result);
   } catch (error) {
     return Response.json(
       { error: getPublicErrorMessage(error, "Failed to load notes") },

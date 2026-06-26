@@ -91,6 +91,13 @@ function inferAudioFormat(fileName, mimeType) {
   return "webm";
 }
 
+function normalizeLanguage(value) {
+  const next = String(value || "").trim().toLowerCase();
+  if (!next || next === "auto") return "";
+  if (/^[a-z]{2,3}(?:-[a-z]{2})?$/.test(next)) return next;
+  return "";
+}
+
 export async function POST(request) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -113,6 +120,7 @@ export async function POST(request) {
     }
 
     const requestedModel = String(incoming.get("model") || "").trim();
+    const language = normalizeLanguage(incoming.get("language"));
     const configuredModels = parseModelList(OPENROUTER_TRANSCRIBE_MODELS);
     if (!configuredModels.length && OPENROUTER_TRANSCRIBE_MODEL) {
       configuredModels.push(OPENROUTER_TRANSCRIBE_MODEL);
@@ -169,11 +177,13 @@ export async function POST(request) {
             data: base64Data,
             format,
           },
+          ...(language ? { language } : {}),
         });
       } else {
         const upstreamForm = new FormData();
         upstreamForm.append("model", modelName);
         upstreamForm.append("file", inputFile, fileName);
+        if (language) upstreamForm.append("language", language);
         body = upstreamForm;
       }
 
@@ -221,6 +231,7 @@ export async function POST(request) {
                 transport,
                 format,
                 byteLength,
+                language,
                 attempts,
               };
             }
@@ -261,6 +272,7 @@ export async function POST(request) {
         transportsToTry,
         format,
         byteLength,
+        language,
         apiBase: OPENROUTER_API_BASE,
         retry5xx: OPENROUTER_TRANSCRIBE_RETRY_5XX,
         retryDelayMs: OPENROUTER_TRANSCRIBE_RETRY_DELAY_MS,
