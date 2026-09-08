@@ -1,111 +1,85 @@
-# Voice Notes (Next.js)
+# VoiceNotes
 
-Next.js App Router app that:
-- records microphone audio or uploads audio/video files,
-- transcribes with OpenRouter (`/api/transcribe`),
-- auto-generates heading + summary after transcription (`/api/summary`),
-- generates social posts with OpenRouter (`/api/generate`) using selected writing style,
-- stores notes/styles/posts in Supabase MVP Hub.
+**Voice-to-content workspace with transcription, summarization, and AI-assisted drafting.**
 
-## Stack
+VoiceNotes turns microphone recordings or uploaded media into searchable notes, concise summaries, and draft social content. The app covers the whole flow: ingestion, model routing, persistence, access control, and reusable prompt templates.
 
-- Next.js 16 (App Router)
-- React 19
-- Server Route Handlers for OpenRouter proxy
+![Synthetic VoiceNotes workflow showing capture, transcript, summary, and generated content](docs/images/workflow.svg)
 
-## Environment
+## Why it exists
 
-Create `.env.local` in the project root (template included):
+Ideas often arrive faster than they can be typed or organized. A useful voice workflow needs more than transcription: it must survive model failures, preserve the source, create structured derivatives, and keep provider credentials away from the client.
 
-```bash
-cp .env.example .env.local
+VoiceNotes treats the recording, transcript, summary, and generated posts as related artifacts rather than a single disposable model response.
+
+## What it does
+
+- records from the microphone or accepts audio/video uploads;
+- transcribes through a configurable OpenRouter model and transport fallback chain;
+- retries upstream 5xx responses with bounded backoff;
+- derives a heading and summary as structured JSON;
+- saves notes, style profiles, tags, and multiple generated posts in Supabase;
+- generates short, medium, or long social drafts from editable prompt templates;
+- supports search, related-note retrieval, export, and cached note lists;
+- protects the application and API routes with revocable access sessions.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A["Mic / file"] --> B["Server upload route"]
+    B --> C["STT fallback chain"]
+    C --> D["Transcript"]
+    D --> E["JSON summary"]
+    D --> F["Prompt template"]
+    E --> G["Supabase"]
+    F --> H["Draft content"]
+    H --> G
 ```
 
-Required variables:
-- `OPENROUTER_API_KEY`
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `ACCESS_CODE` (shared access code required to open app/API)
+The browser sends media to a Next.js route; it never receives provider credentials. The transcription adapter can try multiple models and both JSON and multipart transports, retrying bounded server failures and recording per-attempt diagnostics only when debug mode is explicitly enabled.
 
-Access control behavior:
-- unauthenticated users are redirected to `/access`,
-- successful code entry creates a persistent session,
-- sessions are listed in `Settings` and can be terminated manually.
+The summary route requests a JSON object and normalizes it into a heading and summary. Draft generation combines the transcript with a selected style snapshot, length policy, and optional instructions. Supabase stores the source note and its derived posts.
 
-Optional variables:
-- `OPENROUTER_TEXT_MODEL` (default: `openai/gpt-4o-mini`)
-- `OPENROUTER_API_BASE` (default: `https://openrouter.ai/api/v1`)
-- `OPENROUTER_APP_TITLE` (default: `Voice to Post`)
-- `OPENROUTER_HTTP_REFERER` (optional app URL, for OpenRouter attribution/routing)
-- `OPENROUTER_TRANSCRIBE_MODEL` (single STT model)
-- `OPENROUTER_TRANSCRIBE_MODELS` (comma-separated STT model fallback chain, overrides single model when set)
-- `OPENROUTER_TRANSCRIBE_TRANSPORTS` (comma-separated request formats: `json`, `multipart`; default: `json,multipart`)
-- `OPENROUTER_TRANSCRIBE_RETRY_5XX` (retry count per model for upstream 5xx, default: `1`)
-- `OPENROUTER_TRANSCRIBE_RETRY_DELAY_MS` (base backoff for 5xx retries, default: `300`)
-- `OPENROUTER_TRANSCRIBE_MAX_BYTES` (max input size in bytes, default: `26214400` = 25MB)
-- `MVP_HUB_APP_SLUG` (default: `voicenotes`)
+## A few implementation notes
 
-Example:
-- `OPENROUTER_TRANSCRIBE_MODELS=openai/whisper-1,openai/gpt-4o-mini-transcribe`
-- `OPENROUTER_TRANSCRIBE_TRANSPORTS=json,multipart`
-- `OPENROUTER_TRANSCRIBE_RETRY_5XX=1`
-- `OPENROUTER_TRANSCRIBE_RETRY_DELAY_MS=300`
+- **Fallback matrix:** transcription can advance across configured models and request transports, not just repeat one failing call.
+- **Bounded retries:** only upstream server failures are retried, with configurable backoff and input-size limits.
+- **Server-side secrets:** OpenRouter and Supabase service credentials remain in route handlers.
+- **Prompt templates:** summary and generation instructions are versionable Markdown files loaded independently of UI code.
+- **Artifact lineage:** posts retain generation settings and a style snapshot alongside their source note.
+- **Session management:** access cookies use signed tokens; active sessions can be listed and terminated.
+- **Debug boundary:** detailed upstream attempts are returned only behind an explicit debug flag.
+- **Test coverage:** Node tests cover access control, API error normalization, caching, export, tags, and template rendering; Playwright provides a smoke path.
 
-Transcription debug mode:
-- Open app with `?debug=1` (for example `http://localhost:3000/?debug=1`).
-- `/api/transcribe` will return full debug payload (`models`, `attempts`, raw upstream body), and UI will show it in the Whisper error text.
+## Tech stack
 
-## Local development
+Next.js 16, React 19, JavaScript, OpenRouter, Supabase/PostgreSQL, Playwright, Node's built-in test runner.
+
+## Running locally
 
 ```bash
-npm install
+npm ci
+cp .env.example .env.local
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Required and optional variables, including the transcription fallback chain, are documented in `.env.example`.
 
-## Production build
+## Checks
 
 ```bash
+npm test
 npm run build
-npm run start
+npm run test:smoke
 ```
 
-## Security model
+The smoke test requires a configured local environment. Unit tests do not call live model providers.
 
-- API key entry in UI is removed.
-- Browser calls local Next.js API routes only.
-- OpenRouter API key is read server-side from `process.env.OPENROUTER_API_KEY`.
+## Current state
 
-## Prompt templates
+**Working prototype with an access-controlled deployment.** The deployed workspace is intentionally not a public demo. The visual above uses synthetic content and contains no private recordings.
 
-- All internal LLM prompts are in `/prompts`:
-  - `prompts/generate-post.md`
-  - `prompts/summary.md`
-- API routes read these files on each request, so prompt edits are picked up without code changes.
+## License
 
-## Persistence model (Supabase)
-
-Tables (schema `mvp_hub`):
-- `apps`
-- `styles`
-- `notes`
-- `note_posts`
-- legacy `artifacts` (kept for backwards compatibility)
-
-Saved per note:
-- dictated/input text
-- heading + summary
-- generated posts (multiple)
-- generation settings (`length`, `extraInstructions`, style snapshot)
-
-Saved globally:
-- style profiles (`name`, `instructions`)
-
-API routes:
-- `GET/POST /api/styles`
-- `DELETE /api/styles/:id`
-- `GET/POST /api/notes`
-- `GET/PATCH /api/notes/:id`
-- `POST /api/notes/:id/posts`
-- `GET /api/notes/:id/similar`
+No open-source license has been declared.
